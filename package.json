@@ -8,6 +8,7 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "sidecar": "node scripts/copy-sidecar.js",
     "4dev": "yarn tauri dev"
   },
   "dependencies": {
