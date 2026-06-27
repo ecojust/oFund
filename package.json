@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "sidecar": "node scripts/copy-sidecar.js",
-    "4dev": "yarn tauri dev"
+    "4dev": "yarn tauri dev",
+    "logo": "tauri icon ./logo.png"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
