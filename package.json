@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "build-info": "node scripts/update-build-info.js",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
     "sidecar": "node scripts/copy-sidecar.js",
-    "4dev": "yarn tauri dev",
+    "4dev": "yarn run build-info && yarn tauri dev",
     "logo": "tauri icon ./logo.png"
   },
   "dependencies": {
