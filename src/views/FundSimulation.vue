@@ -10,7 +10,7 @@
 
     <!-- Phase 1: Data Setup -->
     <template v-if="phase === 'setup'">
-      <div class="setup">
+      <div class="setup" v-loading="loading" element-loading-text="获取数据中...">
         <div class="setup-row">
           <el-radio-group v-model="period" size="small">
             <el-radio-button value="1m">1个月</el-radio-button>
@@ -19,9 +19,6 @@
             <el-radio-button value="1y">1年</el-radio-button>
             <el-radio-button value="all">全部</el-radio-button>
           </el-radio-group>
-          <el-button type="primary" size="small" :loading="loading" @click="fetchData">
-            {{ historyData.length ? '重新获取' : '获取数据' }}
-          </el-button>
         </div>
 
         <div v-if="dailyChanges.length" class="range-section">
@@ -68,116 +65,125 @@
     <!-- Phase 2: Simulation -->
     <template v-if="phase === 'simulate'">
       <div class="sim-body">
-        <div class="day-header">
-          <span class="day-progress">第 {{ currentStep + 1 }} 天 / 共 {{ simDays.length }} 天</span>
-          <span class="day-date">{{ currentDay.date }}</span>
-        </div>
-
-        <div class="change-card" :class="currentDay.change >= 0 ? 'up' : 'down'">
-          <div class="change-label">今日涨跌</div>
-          <div class="change-value">{{ currentDay.change >= 0 ? '+' : '' }}{{ currentDay.change.toFixed(2) }}%</div>
-        </div>
-
-        <div class="pnl-section" v-if="currentStep > 0">
-          <div class="pnl-row">
-            <span class="pnl-label">上期投入</span>
-            <span class="pnl-value">¥{{ formatMoney(prevInvestment) }}</span>
+        <div class="sim-left">
+          <div class="day-header">
+            <span class="day-progress">第 {{ currentStep + 1 }} 天 / 共 {{ simDays.length }} 天</span>
+            <span class="day-date">{{ currentDay.date }}</span>
           </div>
-          <div class="pnl-row">
-            <span class="pnl-label">今日盈亏</span>
-            <span class="pnl-value" :class="todayPnl >= 0 ? 'up' : 'down'">
-              {{ todayPnl >= 0 ? '+' : '' }}¥{{ formatMoney(todayPnl) }}
-            </span>
-          </div>
-        </div>
 
-        <div class="invest-section">
-          <div class="invest-label">今日投资额</div>
-          <div class="invest-controls">
-            <el-input-number
-              v-model="currentInvestment"
-              :min="0"
-              :step="100"
-              :precision="2"
-              size="small"
-              class="invest-input"
-              controls-position="right"
-            />
-            <el-button type="primary" size="small" @click="confirmDay">确认</el-button>
+          <div class="change-card" :class="currentDay.change >= 0 ? 'up' : 'down'">
+            <div class="change-label">今日涨跌</div>
+            <div class="change-value">{{ currentDay.change >= 0 ? '+' : '' }}{{ currentDay.change.toFixed(2) }}%</div>
           </div>
-        </div>
 
-        <div class="summary">
-          <div class="summary-row">
-            <span>累计投入</span>
-            <span class="mono">¥{{ formatMoney(totalInvested) }}</span>
-          </div>
-          <div class="summary-row">
-            <span>累计盈亏</span>
-            <span class="mono" :class="cumulativePnl >= 0 ? 'up' : 'down'">
-              {{ cumulativePnl >= 0 ? '+' : '' }}¥{{ formatMoney(cumulativePnl) }}
-            </span>
-          </div>
-          <div class="summary-row total">
-            <span>当前总价值</span>
-            <span class="mono">¥{{ formatMoney(currentValue) }}</span>
-          </div>
-        </div>
-
-        <div class="nav-buttons" v-if="allConfirmed.length">
-          <el-button text size="small" :disabled="currentStep === 0" @click="goToStep(currentStep - 1)">
-            ← 上一天
-          </el-button>
-          <el-button text size="small" :disabled="currentStep >= simDays.length - 1" @click="goToStep(currentStep + 1)">
-            下一天 →
-          </el-button>
-        </div>
-      </div>
-    </template>
-
-    <!-- Phase 3: Complete -->
-    <template v-if="phase === 'complete'">
-      <div class="complete">
-        <div class="complete-summary">
-          <div class="complete-title">模拟结束</div>
-          <div class="complete-stats">
-            <div class="stat">
-              <span class="stat-label">模拟天数</span>
-              <span class="stat-value">{{ simDays.length }} 天</span>
+          <div class="invest-section">
+            <div class="invest-label">今日投资额</div>
+            <div class="invest-presets">
+              <el-button
+                v-for="amt in presets"
+                :key="amt"
+                size="small"
+                :class="{ active: currentInvestment === amt }"
+                @click="currentInvestment = amt"
+              >{{ amt === 0 ? '不投' : `¥${amt.toLocaleString()}` }}</el-button>
             </div>
-            <div class="stat">
-              <span class="stat-label">累计投入</span>
-              <span class="stat-value mono">¥{{ formatMoney(totalInvested) }}</span>
+            <div class="invest-controls">
+              <el-input-number
+                v-model="currentInvestment"
+                :min="0"
+                :step="100"
+                :precision="2"
+                size="small"
+                class="invest-input"
+                controls-position="right"
+              />
+              <el-button type="primary" size="small" @click="confirmDay">确认</el-button>
             </div>
-            <div class="stat">
-              <span class="stat-label">累计盈亏</span>
-              <span class="stat-value mono" :class="cumulativePnl >= 0 ? 'up' : 'down'">
+          </div>
+
+          <div class="position-bar" v-if="totalInvested > 0">
+            <span class="position-label">仓位</span>
+            <div class="position-track">
+              <div class="position-fill" :style="{ width: positionPct + '%' }"></div>
+            </div>
+            <span class="position-text">¥{{ formatMoney(totalInvested) }} / ¥{{ formatMoney(totalBudget) }}</span>
+          </div>
+
+          </div>
+
+        <div class="sim-right">
+          <div class="chart-area" ref="chartRef"></div>
+          <div class="summary">
+            <div class="summary-row">
+              <span>总投资</span>
+              <span class="mono">¥{{ formatMoney(totalBudget) }}</span>
+            </div>
+            <div class="summary-row">
+              <span>已投入</span>
+              <span class="mono">¥{{ formatMoney(totalInvested) }}</span>
+            </div>
+            <div class="summary-row">
+              <span>可用余额</span>
+              <span class="mono" :class="{ warn: totalBudget - totalInvested < 5000 }">¥{{ formatMoney(Math.max(0, totalBudget - totalInvested)) }}</span>
+            </div>
+            <div class="summary-row">
+              <span>累计盈亏</span>
+              <span class="mono" :class="cumulativePnl >= 0 ? 'up' : 'down'">
                 {{ cumulativePnl >= 0 ? '+' : '' }}¥{{ formatMoney(cumulativePnl) }}
               </span>
             </div>
-            <div class="stat">
-              <span class="stat-label">最终价值</span>
-              <span class="stat-value mono">¥{{ formatMoney(currentValue) }}</span>
-            </div>
-            <div class="stat" v-if="totalInvested > 0">
-              <span class="stat-label">收益率</span>
-              <span class="stat-value" :class="cumulativePnl >= 0 ? 'up' : 'down'">
-                {{ ((cumulativePnl / totalInvested) * 100).toFixed(2) }}%
-              </span>
+            <div class="summary-row total">
+              <span>当前总价值</span>
+              <span class="mono">¥{{ formatMoney(currentValue) }}</span>
             </div>
           </div>
-          <el-button text size="small" @click="goToStep(0)" class="review-btn">回顾模拟过程</el-button>
-          <el-button text size="small" @click="resetAll" class="reset-btn">重新开始</el-button>
         </div>
       </div>
     </template>
+
+    <el-dialog v-model="showCompleteDialog" title="模拟结束" width="420px" :close-on-click-modal="false" align-center>
+      <div class="dialog-stats">
+        <div class="dialog-stat">
+          <span class="dialog-stat-label">模拟天数</span>
+          <span class="dialog-stat-value">{{ simDays.length }} 天</span>
+        </div>
+        <div class="dialog-stat">
+          <span class="dialog-stat-label">总投资额</span>
+          <span class="dialog-stat-value mono">¥{{ formatMoney(totalBudget) }}</span>
+        </div>
+        <div class="dialog-stat">
+          <span class="dialog-stat-label">累计投入</span>
+          <span class="dialog-stat-value mono">¥{{ formatMoney(totalInvested) }}</span>
+        </div>
+        <div class="dialog-stat">
+          <span class="dialog-stat-label">累计盈亏</span>
+          <span class="dialog-stat-value mono" :class="cumulativePnl >= 0 ? 'up' : 'down'">
+            {{ cumulativePnl >= 0 ? '+' : '' }}¥{{ formatMoney(cumulativePnl) }}
+          </span>
+        </div>
+        <div class="dialog-stat">
+          <span class="dialog-stat-label">最终价值</span>
+          <span class="dialog-stat-value mono">¥{{ formatMoney(currentValue) }}</span>
+        </div>
+        <div class="dialog-stat" v-if="totalInvested > 0">
+          <span class="dialog-stat-label">收益率</span>
+          <span class="dialog-stat-value" :class="cumulativePnl >= 0 ? 'up' : 'down'">
+            {{ ((cumulativePnl / totalInvested) * 100).toFixed(2) }}%
+          </span>
+        </div>
+      </div>
+      <template #footer>
+        <el-button type="primary" size="small" @click="resetAll">重新开始</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue"
+import { ref, computed, onMounted, watch, onBeforeUnmount, nextTick } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { invoke } from "@tauri-apps/api/core"
+import * as echarts from "echarts"
 
 interface HistoryPoint {
   timestamp: number
@@ -201,6 +207,7 @@ const period = ref("1m")
 const loading = ref(false)
 const historyData = ref<HistoryPoint[]>([])
 const phase = ref<Phase>("setup")
+const showCompleteDialog = ref(false)
 
 function goBack() {
   router.push("/")
@@ -267,25 +274,14 @@ interface SimulationDay {
   change: number
   investment: number
   pnl: number
+  position: number
 }
 
 const simDays = ref<SimulationDay[]>([])
 const currentStep = ref(0)
 const currentInvestment = ref(1000)
-const allConfirmed = ref<number[]>([]) // indices that have been confirmed
-
-const currentDay = computed(() => simDays.value[currentStep.value] ?? { date: "", change: 0, investment: 0, pnl: 0 })
-
-const prevInvestment = computed(() => {
-  if (currentStep.value === 0) return 0
-  return simDays.value[currentStep.value - 1].investment
-})
-
-const todayPnl = computed(() => {
-  if (currentStep.value === 0) return 0
-  const prevInv = simDays.value[currentStep.value - 1].investment
-  return prevInv * (currentDay.value.change / 100)
-})
+const presets = [0, 100, 500, 1000, 5000, 10000]
+const currentDay = computed(() => simDays.value[currentStep.value] ?? { date: "", change: 0, investment: 0, pnl: 0, position: 0 })
 
 const totalInvested = computed(() =>
   simDays.value.reduce((sum, d) => sum + d.investment, 0)
@@ -295,11 +291,160 @@ const cumulativePnl = computed(() =>
   simDays.value.reduce((sum, d) => sum + d.pnl, 0)
 )
 
+const totalBudget = 50000
+const positionPct = computed(() =>
+  Math.min((totalInvested.value / totalBudget) * 100, 100)
+)
 const currentValue = computed(() => totalInvested.value + cumulativePnl.value)
 
 function formatMoney(n: number): string {
   return n.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
+
+// ─── Chart ───
+
+const chartRef = ref<HTMLElement | null>(null)
+let chartInstance: echarts.ECharts | null = null
+
+const chartPoints = computed(() => {
+  if (!simDays.value.length || !historyData.value.length) return []
+  const sorted = [...historyData.value].sort((a, b) => a.timestamp - b.timestamp)
+  const firstSimDate = simDays.value[0].date
+  const firstPointIdx = sorted.findIndex(p => formatDate(p.timestamp) === firstSimDate)
+  if (firstPointIdx < 0) return sorted.slice(0, 2)
+  const showUpTo = Math.min(firstPointIdx + currentStep.value, sorted.length - 1)
+  const result = sorted.slice(0, 1)
+  for (let i = firstPointIdx; i <= showUpTo; i++) {
+    result.push(sorted[i])
+  }
+  return result
+})
+
+function buildChartOption() {
+  const points = chartPoints.value
+  if (!points.length) return {}
+
+  const currentTs = currentStep.value < simDays.value.length
+    ? parseDate(simDays.value[currentStep.value].date).getTime()
+    : points[points.length - 1].timestamp
+
+  const markLines: any[] = [{
+    xAxis: currentTs,
+    label: { show: false },
+    lineStyle: { color: "rgba(255,255,255,0.25)", type: "dashed", width: 1 },
+    symbol: "none",
+  }]
+
+  // Add investment markPoints
+  const markPoints: any[] = []
+  simDays.value.forEach((day) => {
+    const pt = points.find(p => formatDate(p.timestamp) === day.date)
+    if (!pt) return
+    const isZero = day.investment === 0
+    markPoints.push({
+      coord: [pt.timestamp, pt.value],
+      symbol: "circle",
+      symbolSize: 8,
+      itemStyle: {
+        color: "#D4A84B",
+        borderColor: "#0B0B0F",
+        borderWidth: 2,
+      },
+      label: {
+        show: true,
+        formatter: isZero ? "0" : `¥${day.investment >= 10000 ? (day.investment / 10000).toFixed(1) + 'w' : day.investment.toFixed(0)}`,
+        position: "top",
+        color: "#D4A84B",
+        fontSize: 10,
+        fontFamily: "SF Mono, monospace",
+      },
+    })
+  })
+
+  return {
+    backgroundColor: "transparent",
+    grid: { left: 50, right: 16, top: 28, bottom: 28 },
+    tooltip: {
+      trigger: "axis",
+      formatter: (params: any) => {
+        const p = params[0]
+        if (!p) return ""
+        return `${formatDate(p.data[0])}<br/>累计收益率: ${p.data[1].toFixed(2)}%`
+      },
+    },
+    xAxis: {
+      type: "time",
+      axisLabel: { color: "#5A5A5A", fontSize: 10, hideOverlap: true },
+      splitLine: { show: false },
+      axisLine: { show: false },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: "value",
+      axisLabel: {
+        color: "#5A5A5A",
+        fontSize: 10,
+        formatter: (v: number) => v.toFixed(1) + "%",
+      },
+      splitLine: { lineStyle: { color: "rgba(255,255,255,0.04)" } },
+      axisLine: { show: false },
+      axisTick: { show: false },
+    },
+    series: [{
+      type: "line",
+      data: points.map(p => [p.timestamp, p.value]),
+      smooth: true,
+      showSymbol: false,
+      lineStyle: { width: 2, color: "#D4A84B" },
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: "rgba(212,168,75,0.2)" },
+          { offset: 1, color: "rgba(212,168,75,0.01)" },
+        ]),
+      },
+      markLine: {
+        silent: true,
+        symbol: "none",
+        data: markLines,
+      },
+      markPoint: {
+        silent: true,
+        symbol: "circle",
+        data: markPoints,
+      },
+    }],
+  }
+}
+
+function renderChart() {
+  if (!chartRef.value || !chartPoints.value.length) return
+  if (!chartInstance) {
+    chartInstance = echarts.init(chartRef.value, undefined, { renderer: "canvas" })
+  }
+  chartInstance.setOption(buildChartOption(), true)
+  chartInstance.resize()
+}
+
+function updateChartMarker() {
+  if (!chartInstance || !chartPoints.value.length) return
+  chartInstance.setOption(buildChartOption(), true)
+}
+
+// ─── Watch chart ───
+
+watch(currentStep, () => {
+  nextTick(() => updateChartMarker())
+})
+
+watch(simDays, () => {
+  nextTick(() => updateChartMarker())
+}, { deep: true })
+
+watch(period, () => {
+  if (fundCode.value && phase.value === "setup") {
+    fetchData()
+  }
+})
 
 // ─── Actions ───
 
@@ -334,54 +479,69 @@ function startSimulation() {
     change: d.change,
     investment: 0,
     pnl: 0,
+    position: 0,
   }))
   currentStep.value = 0
   currentInvestment.value = 1000
-  allConfirmed.value = []
   phase.value = "simulate"
+  nextTick(() => renderChart())
 }
 
 function confirmDay() {
-  const inv = currentInvestment.value || 0
-  simDays.value[currentStep.value].investment = inv
-  if (currentStep.value > 0) {
-    const prevInv = simDays.value[currentStep.value - 1].investment
-    simDays.value[currentStep.value].pnl = prevInv * (simDays.value[currentStep.value].change / 100)
-  }
-  allConfirmed.value.push(currentStep.value)
+  const step = currentStep.value
+  const remaining = totalBudget - totalInvested.value
+  let inv = currentInvestment.value || 0
+  if (inv > remaining) inv = remaining
+  currentInvestment.value = inv
 
-  if (currentStep.value >= simDays.value.length - 1) {
-    // calc last day's pnl
-    const lastInv = simDays.value[simDays.value.length - 1].investment
-    if (lastInv > 0) {
-      // no next day change to apply, so no pnl from last investment
-    }
-    phase.value = "complete"
+  const day = simDays.value[step]
+  day.investment = inv
+
+  if (step === 0) {
+    day.pnl = 0
+    day.position = inv
+  } else {
+    const prevPosition = simDays.value[step - 1].position
+    day.pnl = prevPosition * (day.change / 100)
+    day.position = prevPosition + day.pnl + inv
+  }
+
+  if (step >= simDays.value.length - 1) {
+    showCompleteDialog.value = true
   } else {
     currentStep.value++
-    currentInvestment.value = 1000
-  }
-}
-
-function goToStep(idx: number) {
-  if (idx >= 0 && idx < simDays.value.length) {
-    currentStep.value = idx
   }
 }
 
 function resetAll() {
   phase.value = "setup"
+  showCompleteDialog.value = false
   simDays.value = []
   currentStep.value = 0
-  allConfirmed.value = []
-  historyData.value = []
+  // reset chart
+  chartInstance?.dispose()
+  chartInstance = null
 }
 
 // ─── Lifecycle ───
 
 onMounted(() => {
   fundCode.value = route.params.code as string
+  window.addEventListener("resize", handleResize)
+  if (fundCode.value) {
+    fetchData()
+  }
 })
+
+onBeforeUnmount(() => {
+  window.removeEventListener("resize", handleResize)
+  chartInstance?.dispose()
+  chartInstance = null
+})
+
+function handleResize() {
+  chartInstance?.resize()
+}
 
 watch(
   () => route.params.code,
@@ -498,13 +658,37 @@ watch(
 
 .sim-body {
   flex: 1;
+  display: flex;
+  gap: 0;
+  overflow: hidden;
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.sim-left {
+  flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: 20px 16px 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  max-width: 480px;
-  margin: 0 auto;
+  gap: 16px;
+  min-width: 0;
+}
+
+.sim-right {
+  width: 380px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px 16px 8px;
+  border-left: 1px solid var(--border-subtle);
+}
+
+.chart-area {
+  flex: 1;
+  min-height: 0;
   width: 100%;
 }
 .day-header {
@@ -597,6 +781,30 @@ watch(
   font-size: 13px;
   color: var(--text-primary);
 }
+.invest-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.invest-presets .el-button {
+  font-family: var(--font-display);
+  font-size: 12px;
+  padding: 0 10px;
+  height: 28px;
+  border-color: var(--border-default);
+  color: var(--text-secondary);
+  background: transparent;
+  border-radius: var(--radius-sm);
+}
+.invest-presets .el-button:hover {
+  border-color: var(--accent-gold);
+  color: var(--accent-gold);
+}
+.invest-presets .el-button.active {
+  border-color: var(--accent-gold);
+  background: var(--accent-gold-muted);
+  color: var(--accent-gold);
+}
 .invest-controls {
   display: flex;
   align-items: center;
@@ -642,6 +850,45 @@ watch(
 .summary-row .down {
   color: var(--down-green);
 }
+.summary-row .warn {
+  color: var(--accent-gold);
+}
+
+/* ─── Position Bar ─── */
+
+.position-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+.position-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.position-track {
+  flex: 1;
+  height: 4px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.position-fill {
+  height: 100%;
+  background: var(--accent-gold);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+.position-text {
+  font-family: var(--font-display);
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
 
 /* Navigation */
 .nav-buttons {
@@ -650,61 +897,63 @@ watch(
   padding-top: 4px;
 }
 
-/* ─── Complete ─── */
+/* ─── Dialog ─── */
 
-.complete {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 16px;
-}
-.complete-summary {
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 24px;
-}
-.complete-title {
-  font-family: var(--font-display);
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-.complete-stats {
+.dialog-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  text-align: center;
+  gap: 12px;
 }
-.stat {
+.dialog-stat {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 16px;
+  padding: 12px;
   background: var(--bg-surface);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
 }
-.stat-label {
+.dialog-stat-label {
   font-size: 12px;
   color: var(--text-secondary);
 }
-.stat-value {
+.dialog-stat-value {
   font-family: var(--font-display);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
 }
-.stat-value.up {
+.dialog-stat-value.up {
   color: var(--up-red);
 }
-.stat-value.down {
+.dialog-stat-value.down {
   color: var(--down-green);
 }
-.review-btn,
-.reset-btn {
-  font-size: 13px;
+
+:deep(.el-dialog) {
+  --el-dialog-bg-color: var(--bg-elevated);
+  --el-dialog-title-font-size: 16px;
+  --el-dialog-border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
 }
+:deep(.el-dialog__title) {
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 16px;
+}
+:deep(.el-dialog__header) {
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 16px 20px;
+  margin: 0;
+}
+:deep(.el-dialog__body) {
+  padding: 20px;
+}
+:deep(.el-dialog__footer) {
+  border-top: 1px solid var(--border-subtle);
+  padding: 12px 20px;
+}
+
+
 </style>
