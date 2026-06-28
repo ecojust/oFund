@@ -70,7 +70,9 @@ class OpencodeService {
       )
       const data = await res.json()
       await eventPromise
-      return data?.parts?.find((p: any) => p.type === "text")?.text || ""
+      const text = data?.parts?.find((p: any) => p.type === "text")?.text
+      if (text) return text
+      return JSON.stringify(data)
     } catch (e) {
       await eventPromise
       throw e
