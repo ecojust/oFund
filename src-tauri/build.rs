@@ -1,3 +1,327 @@
+use std::path::PathBuf;
+use std::process::Command;
+
+fn target_arch_name(target: &str) -> Option<(&str, &str, &str)> {
+    if target.ends_with("apple-darwin") {
+        if target.starts_with("aarch64") {
+            Some(("darwin", "arm64", "zip"))
+        } else if target.starts_with("x86_64") {
+            Some(("darwin", "x64", "zip"))
+        } else {
+            None
+        }
+    } else if target.ends_with("windows-msvc") {
+        if target.starts_with("x86_64") {
+            Some(("windows", "x64-baseline", "zip"))
+        } else if target.starts_with("aarch64") {
+            Some(("windows", "arm64", "zip"))
+        } else {
+            None
+        }
+    } else if target.ends_with("linux-gnu") || target.ends_with("linux-musl") {
+        if target.starts_with("x86_64") {
+            Some(("linux", "x64", "tar.gz"))
+        } else if target.starts_with("aarch64") {
+            Some(("linux", "arm64", "tar.gz"))
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+fn sidecar_path(binaries_dir: &PathBuf, target: &str) -> PathBuf {
+    if target.contains("windows") {
+        binaries_dir.join(format!("opencode-{target}.exe"))
+    } else {
+        binaries_dir.join(format!("opencode-{target}"))
+    }
+}
+
+fn copy_from_local(binaries_dir: &PathBuf, target: &str) -> bool {
+    let search_cmds: &[(&str, &str)] = if cfg!(target_os = "windows") {
+        &[("where", "opencode.exe")]
+    } else {
+        &[("which", "opencode")]
+    };
+
+    for &(cmd, arg) in search_cmds {
+        if let Ok(output) = Command::new(cmd).arg(arg).output() {
+            let found = String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+
+            if let Some(src) = found {
+                let src_path = PathBuf::from(&src);
+                if src_path.exists() {
+                    if !validate_executable(&src_path, target) {
+                        println!(
+                            "cargo:warning=skipping non-native opencode candidate: {}",
+                            src_path.display()
+                        );
+                        continue;
+                    }
+                    let dest = sidecar_path(binaries_dir, target);
+                    std::fs::copy(&src_path, &dest).ok();
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn download_from_github(binaries_dir: &PathBuf, target: &str) -> bool {
+    let (os, arch, ext) = match target_arch_name(target) {
+        Some(v) => v,
+        None => {
+            println!("cargo:warning=unsupported target for download: {target}");
+            return false;
+        }
+    };
+
+    let version = "v1.16.2";
+    let archive_name = format!("opencode-{os}-{arch}.{ext}");
+    let url =
+        format!("https://github.com/anomalyco/opencode/releases/download/{version}/{archive_name}");
+
+    let temp_dir = std::env::temp_dir().join("oFund-sidecar");
+    let extract_dir = temp_dir.join("extract");
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&extract_dir).ok();
+    let archive_path = temp_dir.join(&archive_name);
+
+    if cfg!(target_os = "windows") {
+        Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                &format!(
+                    "Invoke-WebRequest -Uri '{}' -OutFile '{}'",
+                    url,
+                    archive_path.display()
+                ),
+            ])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    } else {
+        Command::new("curl")
+            .args(["-sLf", "-o", &archive_path.to_string_lossy(), &url])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+            || Command::new("wget")
+                .args([
+                    "-q",
+                    "--content-on-error=off",
+                    "-O",
+                    &archive_path.to_string_lossy(),
+                    &url,
+                ])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+    };
+
+    if !archive_path.exists() {
+        println!("cargo:warning=failed to download opencode from {url}");
+        return false;
+    }
+
+    let is_valid = if ext == "zip" {
+        validate_zip(&archive_path)
+    } else {
+        validate_tar_gz(&archive_path)
+    };
+    if !is_valid {
+        println!("cargo:warning=downloaded opencode archive is invalid (HTML error page?)");
+        let _ = std::fs::remove_file(&archive_path);
+        return false;
+    }
+
+    let extract_ok = if ext == "zip" {
+        if cfg!(target_os = "windows") {
+            Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-Command",
+                    &format!(
+                        "Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
+                        archive_path.display(),
+                        extract_dir.display()
+                    ),
+                ])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        } else {
+            Command::new("unzip")
+                .args([
+                    "-q",
+                    "-o",
+                    &archive_path.to_string_lossy(),
+                    "-d",
+                    &extract_dir.to_string_lossy(),
+                ])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        }
+    } else {
+        Command::new("tar")
+            .args([
+                "-xzf",
+                &archive_path.to_string_lossy(),
+                "-C",
+                &extract_dir.to_string_lossy(),
+            ])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    };
+
+    if !extract_ok {
+        println!("cargo:warning=failed to extract opencode archive");
+        return false;
+    }
+
+    let found = walk_extracted(&extract_dir, target);
+    if let Some(src) = found {
+        let dest = sidecar_path(binaries_dir, target);
+        std::fs::copy(&src, &dest).ok();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755));
+        }
+        println!("cargo:info=downloaded opencode sidecar from GitHub");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        return true;
+    }
+
+    println!("cargo:warning=opencode binary not found in extracted archive");
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    false
+}
+
+fn walk_extracted(dir: &PathBuf, target: &str) -> Option<PathBuf> {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if name.starts_with("opencode") && validate_executable(&path, target) {
+                        return Some(path);
+                    }
+                }
+            } else if path.is_dir() {
+                if let Some(found) = walk_extracted(&path, target) {
+                    return Some(found);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn validate_zip(path: &PathBuf) -> bool {
+    if let Ok(data) = std::fs::read(path) {
+        data.len() >= 4 && data[0] == 0x50 && data[1] == 0x4b && data[2] == 0x03 && data[3] == 0x04
+    } else {
+        false
+    }
+}
+
+fn validate_tar_gz(path: &PathBuf) -> bool {
+    if let Ok(data) = std::fs::read(path) {
+        data.len() >= 2 && data[0] == 0x1f && data[1] == 0x8b
+    } else {
+        false
+    }
+}
+
+fn validate_executable(path: &PathBuf, target: &str) -> bool {
+    let Ok(data) = std::fs::read(path) else {
+        return false;
+    };
+    if target.contains("windows") {
+        if data.len() < 0x40 || data[0] != 0x4d || data[1] != 0x5a {
+            return false;
+        }
+        let pe_offset =
+            u32::from_le_bytes([data[0x3c], data[0x3d], data[0x3e], data[0x3f]]) as usize;
+        pe_offset + 4 <= data.len()
+            && data[pe_offset] == 0x50
+            && data[pe_offset + 1] == 0x45
+            && data[pe_offset + 2] == 0x00
+            && data[pe_offset + 3] == 0x00
+    } else if target.contains("linux") {
+        data.len() >= 4 && data[0] == 0x7f && data[1] == 0x45 && data[2] == 0x4c && data[3] == 0x46
+    } else if target.contains("apple-darwin") {
+        data.len() >= 4
+            && matches!(
+                &data[0..4],
+                [0xfe, 0xed, 0xfa, 0xce]
+                    | [0xce, 0xfa, 0xed, 0xfe]
+                    | [0xfe, 0xed, 0xfa, 0xcf]
+                    | [0xcf, 0xfa, 0xed, 0xfe]
+                    | [0xca, 0xfe, 0xba, 0xbe]
+                    | [0xbe, 0xba, 0xfe, 0xca]
+                    | [0xca, 0xfe, 0xba, 0xbf]
+                    | [0xbf, 0xba, 0xfe, 0xca]
+            )
+    } else {
+        false
+    }
+}
+
 fn main() {
-    tauri_build::build()
+    println!("cargo:rerun-if-changed=build.rs");
+
+    let target = std::env::var("TARGET").unwrap_or_default();
+    if target.is_empty() {
+        tauri_build::build();
+        return;
+    }
+
+    let binaries_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("binaries");
+    let dest = sidecar_path(&binaries_dir, &target);
+
+    if dest.exists() {
+        if validate_executable(&dest, &target) {
+            println!("cargo:info=opencode sidecar already exists, skipping");
+            tauri_build::build();
+            return;
+        }
+        println!(
+            "cargo:warning=existing opencode sidecar is invalid, replacing: {}",
+            dest.display()
+        );
+    }
+
+    std::fs::create_dir_all(&binaries_dir).ok();
+
+    if copy_from_local(&binaries_dir, &target) {
+        println!("cargo:info=copied opencode from local installation");
+        tauri_build::build();
+        return;
+    }
+
+    if download_from_github(&binaries_dir, &target) {
+        tauri_build::build();
+        return;
+    }
+
+    println!("cargo:warning=opencode binary not found and download failed");
+    println!("cargo:warning=install opencode with: npm install -g opencode-ai");
+    println!(
+        "cargo:warning=or place the binary manually at: {}",
+        dest.display()
+    );
+
+    tauri_build::build();
 }

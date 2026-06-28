@@ -1,12 +1,20 @@
 mod fund_crawler;
 mod fund_storage;
+mod workspace;
 
 use fund_crawler::{fetch_company_list, fetch_fund_list, CrawlProgress, FundItemWithCompany};
 use serde::Serialize;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 use tauri_plugin_opener::OpenerExt;
+
+pub struct AppState {
+    pub opencode_child: Arc<Mutex<Option<tauri_plugin_shell::process::CommandChild>>>,
+    pub oc_port: Arc<Mutex<Option<u16>>>,
+}
+
+use workspace::{execute_opencode_serve, kill_existing_opencode_processes};
 
 #[tauri::command]
 async fn get_company_list() -> Result<Vec<fund_crawler::Company>, String> {
@@ -152,7 +160,12 @@ async fn get_fund_history(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(AppState {
+            opencode_child: Arc::new(Mutex::new(None)),
+            oc_port: Arc::new(Mutex::new(None)),
+        })
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             get_company_list,
             get_fund_list,
@@ -162,6 +175,8 @@ pub fn run() {
             open_history_dir,
             get_fund_history,
             fetch_all_history,
+            execute_opencode_serve,
+            kill_existing_opencode_processes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

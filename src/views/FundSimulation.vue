@@ -98,7 +98,28 @@
                 controls-position="right"
               />
               <el-button type="primary" size="small" @click="confirmDay">确认</el-button>
+              <el-button size="small" :loading="aiLoading" @click="askAI">问问AI</el-button>
             </div>
+          </div>
+
+          <div class="invest-actions">
+            <el-button
+              type="warning"
+              size="small"
+              :loading="aiAutoRunning"
+              @click="runAiAutoSimulation"
+              class="ai-auto-btn"
+            >AI 自动模拟</el-button>
+          </div>
+
+          <div class="ai-reply" v-if="aiReason">
+            <div class="ai-reply-reason">{{ aiReason }}</div>
+            <div class="ai-reply-putin">建议投资 <strong>¥{{ formatMoney(aiPutin) }}</strong>，已填入输入框</div>
+          </div>
+
+          <div class="ai-prompt" v-if="aiPrompt" @click="togglePrompt">
+            <span class="ai-prompt-toggle">{{ promptExpanded ? '收起' : '查看发送给 AI 的 prompt' }}</span>
+            <div class="ai-prompt-text" v-show="promptExpanded">{{ aiPrompt }}</div>
           </div>
 
           <div class="position-bar" v-if="totalInvested > 0">
@@ -184,6 +205,7 @@ import { ref, computed, onMounted, watch, onBeforeUnmount, nextTick } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { invoke } from "@tauri-apps/api/core"
 import * as echarts from "echarts"
+import OpencodeService from "../service/opencode"
 
 interface HistoryPoint {
   timestamp: number
@@ -275,6 +297,7 @@ interface SimulationDay {
   investment: number
   pnl: number
   position: number
+  aiReason: string
 }
 
 const simDays = ref<SimulationDay[]>([])
@@ -480,6 +503,7 @@ function startSimulation() {
     investment: 0,
     pnl: 0,
     position: 0,
+    aiReason: "",
   }))
   currentStep.value = 0
   currentInvestment.value = 1000
@@ -521,6 +545,114 @@ function resetAll() {
   // reset chart
   chartInstance?.dispose()
   chartInstance = null
+}
+
+// ─── AI Assistant ───
+
+const aiLoading = ref(false)
+const aiReason = ref("")
+const aiPutin = ref(0)
+const aiPrompt = ref("")
+const promptExpanded = ref(false)
+let aiInitialized = false
+
+async function askAI() {
+  aiLoading.value = true
+  try {
+    if (!aiInitialized) {
+      await OpencodeService.initialize(fundCode.value)
+      aiInitialized = true
+    }
+
+    const remaining = totalBudget - totalInvested.value
+    const pastDays = simDays.value.slice(0, currentStep.value + 1)
+    const historyText = pastDays.map((d, i) =>
+      `第${i + 1}天 ${d.date}: 涨跌 ${d.change >= 0 ? '+' : ''}${d.change.toFixed(2)}%, 投入 ¥${d.investment}, 盈亏 ¥${d.pnl.toFixed(2)}, 持仓 ¥${d.position.toFixed(2)}`
+    ).join("\n")
+
+    const prompt = `你是基金投资顾问。请分析以下数据，给出今日建议投资额度。
+
+基金代码：${fundCode.value}
+总投资预算：¥${formatMoney(totalBudget)}
+今日涨跌幅：${currentDay.value.change >= 0 ? '+' : ''}${currentDay.value.change.toFixed(2)}%
+已投入金额：¥${formatMoney(totalInvested.value)}
+累计盈亏：${cumulativePnl.value >= 0 ? '+' : ''}¥${formatMoney(cumulativePnl.value)}
+当前总价值：¥${formatMoney(currentValue.value)}
+剩余可用资金：¥${formatMoney(remaining)}
+
+模拟周期内每日数据：
+${historyText}
+
+请基于今日涨跌幅和持仓情况，给出一个合理的投资额度（范围 0 ~ ${remaining.toFixed(0)}，单位：元）。
+
+请用以下 JSON 格式返回（不要其他文字）：
+{"reason":"给出理由","putin":建议投资金额}`
+
+    aiPrompt.value = prompt
+    const reply = await OpencodeService.sendMessage(prompt)
+    try {
+      const parsed = JSON.parse(reply)
+      aiReason.value = parsed.reason || ""
+      const recommended = Math.min(Math.max(Number(parsed.putin) || 0, 0), remaining)
+      aiPutin.value = recommended
+      currentInvestment.value = recommended
+      simDays.value[currentStep.value].aiReason = aiReason.value
+    } catch {
+      aiReason.value = reply
+      const match = reply.match(/\d+/)
+      if (match) {
+        const recommended = Math.min(Math.max(Number(match[0]), 0), remaining)
+        aiPutin.value = recommended
+        currentInvestment.value = recommended
+      }
+      simDays.value[currentStep.value].aiReason = aiReason.value
+    }
+  } catch (e) {
+    console.error("AI 建议失败", e)
+  } finally {
+    aiLoading.value = false
+  }
+}
+
+// ─── AI Auto Simulation ───
+
+const aiAutoRunning = ref(false)
+
+async function runAiAutoSimulation() {
+  aiAutoRunning.value = true
+  // reset simulation back to day 1
+  currentStep.value = 0
+  currentInvestment.value = 0
+  for (const d of simDays.value) {
+    d.investment = 0
+    d.pnl = 0
+    d.position = 0
+    d.aiReason = ""
+  }
+  chartInstance?.dispose()
+  chartInstance = null
+  nextTick(() => renderChart())
+
+  // restart opencode service to clear session history
+  await OpencodeService.killAll()
+  aiInitialized = false
+
+  try {
+    while (currentStep.value < simDays.value.length) {
+      await askAI()
+      confirmDay()
+      if (showCompleteDialog.value) break
+      await new Promise(r => setTimeout(r, 100))
+    }
+  } catch (e) {
+    console.error("AI 自动模拟失败", e)
+  } finally {
+    aiAutoRunning.value = false
+  }
+}
+
+function togglePrompt() {
+  promptExpanded.value = !promptExpanded.value
 }
 
 // ─── Lifecycle ───
@@ -888,6 +1020,68 @@ watch(
   font-size: 11px;
   color: var(--text-muted);
   flex-shrink: 0;
+}
+
+/* ─── Invest Actions ─── */
+
+.invest-actions {
+  display: flex;
+  gap: 8px;
+}
+.ai-auto-btn {
+  flex: 1;
+}
+
+/* ─── AI Reply ─── */
+
+.ai-reply {
+  padding: 10px 12px;
+  background: rgba(212, 168, 75, 0.06);
+  border: 1px solid rgba(212, 168, 75, 0.2);
+  border-radius: var(--radius-sm);
+}
+.ai-reply-reason {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+.ai-reply-putin {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+.ai-reply-putin strong {
+  color: var(--accent-gold);
+  font-family: var(--font-display);
+}
+
+/* ─── AI Prompt ─── */
+
+.ai-prompt {
+  margin-top: 8px;
+  cursor: pointer;
+}
+.ai-prompt-toggle {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+.ai-prompt-text {
+  margin-top: 6px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-display);
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 /* Navigation */
