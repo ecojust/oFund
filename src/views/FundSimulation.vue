@@ -10,7 +10,11 @@
 
     <!-- Phase 1: Data Setup -->
     <template v-if="phase === 'setup'">
-      <div class="setup" v-loading="loading" element-loading-text="获取数据中...">
+      <div
+        class="setup"
+        v-loading="loading"
+        element-loading-text="获取数据中..."
+      >
         <div class="setup-row">
           <el-radio-group v-model="period" size="small">
             <el-radio-button value="1m">1个月</el-radio-button>
@@ -67,13 +71,21 @@
       <div class="sim-body">
         <div class="sim-left">
           <div class="day-header">
-            <span class="day-progress">第 {{ currentStep + 1 }} 天 / 共 {{ simDays.length }} 天</span>
+            <span class="day-progress"
+              >第 {{ currentStep + 1 }} 天 / 共 {{ simDays.length }} 天</span
+            >
             <span class="day-date">{{ currentDay.date }}</span>
           </div>
 
-          <div class="change-card" :class="currentDay.change >= 0 ? 'up' : 'down'">
+          <div
+            class="change-card"
+            :class="currentDay.change >= 0 ? 'up' : 'down'"
+          >
             <div class="change-label">今日涨跌</div>
-            <div class="change-value">{{ currentDay.change >= 0 ? '+' : '' }}{{ currentDay.change.toFixed(2) }}%</div>
+            <div class="change-value">
+              {{ currentDay.change >= 0 ? "+" : ""
+              }}{{ currentDay.change.toFixed(2) }}%
+            </div>
           </div>
 
           <div class="invest-section">
@@ -85,7 +97,10 @@
                 size="small"
                 :class="{ active: currentInvestment === amt }"
                 @click="currentInvestment = amt"
-              >{{ amt === 0 ? '不投' : `¥${amt.toLocaleString()}` }}</el-button>
+                >{{
+                  amt === 0 ? "不投" : `¥${amt.toLocaleString()}`
+                }}</el-button
+              >
             </div>
             <div class="invest-controls">
               <el-input-number
@@ -97,8 +112,12 @@
                 class="invest-input"
                 controls-position="right"
               />
-              <el-button type="primary" size="small" @click="confirmDay">确认</el-button>
-              <el-button size="small" :loading="aiLoading" @click="askAI">问问AI</el-button>
+              <el-button type="primary" size="small" @click="confirmDay"
+                >确认</el-button
+              >
+              <el-button size="small" :loading="aiLoading" @click="askAI"
+                >问问AI</el-button
+              >
             </div>
           </div>
 
@@ -109,28 +128,42 @@
               :loading="aiAutoRunning"
               @click="runAiAutoSimulation"
               class="ai-auto-btn"
-            >AI 自动模拟</el-button>
+              >AI 自动模拟</el-button
+            >
           </div>
 
           <div class="ai-reply" v-if="aiReason">
             <div class="ai-reply-reason">{{ aiReason }}</div>
-            <div class="ai-reply-putin">建议投资 <strong>¥{{ formatMoney(aiPutin) }}</strong>，已填入输入框</div>
+            <div class="ai-reply-putin">
+              建议投资 <strong>¥{{ formatMoney(aiPutin) }}</strong
+              >，已填入输入框
+            </div>
           </div>
 
           <div class="ai-prompt" v-if="aiPrompt" @click="togglePrompt">
-            <span class="ai-prompt-toggle">{{ promptExpanded ? '收起' : '查看发送给 AI 的 prompt' }}</span>
-            <div class="ai-prompt-text" v-show="promptExpanded">{{ aiPrompt }}</div>
+            <span class="ai-prompt-toggle">{{
+              promptExpanded ? "收起" : "查看发送给 AI 的 prompt"
+            }}</span>
+            <div class="ai-prompt-text" v-show="promptExpanded">
+              {{ aiPrompt }}
+            </div>
           </div>
 
           <div class="position-bar" v-if="totalInvested > 0">
             <span class="position-label">仓位</span>
             <div class="position-track">
-              <div class="position-fill" :style="{ width: positionPct + '%' }"></div>
+              <div
+                class="position-fill"
+                :style="{ width: positionPct + '%' }"
+              ></div>
             </div>
-            <span class="position-text">¥{{ formatMoney(totalInvested) }} / ¥{{ formatMoney(totalBudget) }}</span>
+            <span class="position-text"
+              >¥{{ formatMoney(totalInvested) }} / ¥{{
+                formatMoney(totalBudget)
+              }}</span
+            >
           </div>
-
-          </div>
+        </div>
 
         <div class="sim-right">
           <div class="chart-area" ref="chartRef"></div>
@@ -145,12 +178,20 @@
             </div>
             <div class="summary-row">
               <span>可用余额</span>
-              <span class="mono" :class="{ warn: totalBudget - totalInvested < 5000 }">¥{{ formatMoney(Math.max(0, totalBudget - totalInvested)) }}</span>
+              <span
+                class="mono"
+                :class="{ warn: totalBudget - totalInvested < 5000 }"
+                >¥{{
+                  formatMoney(Math.max(0, totalBudget - totalInvested))
+                }}</span
+              >
             </div>
             <div class="summary-row">
               <span>累计盈亏</span>
               <span class="mono" :class="cumulativePnl >= 0 ? 'up' : 'down'">
-                {{ cumulativePnl >= 0 ? '+' : '' }}¥{{ formatMoney(cumulativePnl) }}
+                {{ cumulativePnl >= 0 ? "+" : "" }}¥{{
+                  formatMoney(cumulativePnl)
+                }}
               </span>
             </div>
             <div class="summary-row total">
@@ -162,7 +203,13 @@
       </div>
     </template>
 
-    <el-dialog v-model="showCompleteDialog" title="模拟结束" width="420px" :close-on-click-modal="false" align-center>
+    <el-dialog
+      v-model="showCompleteDialog"
+      title="模拟结束"
+      width="420px"
+      :close-on-click-modal="false"
+      align-center
+    >
       <div class="dialog-stats">
         <div class="dialog-stat">
           <span class="dialog-stat-label">模拟天数</span>
@@ -170,200 +217,250 @@
         </div>
         <div class="dialog-stat">
           <span class="dialog-stat-label">总投资额</span>
-          <span class="dialog-stat-value mono">¥{{ formatMoney(totalBudget) }}</span>
+          <span class="dialog-stat-value mono"
+            >¥{{ formatMoney(totalBudget) }}</span
+          >
         </div>
         <div class="dialog-stat">
           <span class="dialog-stat-label">累计投入</span>
-          <span class="dialog-stat-value mono">¥{{ formatMoney(totalInvested) }}</span>
+          <span class="dialog-stat-value mono"
+            >¥{{ formatMoney(totalInvested) }}</span
+          >
         </div>
         <div class="dialog-stat">
           <span class="dialog-stat-label">累计盈亏</span>
-          <span class="dialog-stat-value mono" :class="cumulativePnl >= 0 ? 'up' : 'down'">
-            {{ cumulativePnl >= 0 ? '+' : '' }}¥{{ formatMoney(cumulativePnl) }}
+          <span
+            class="dialog-stat-value mono"
+            :class="cumulativePnl >= 0 ? 'up' : 'down'"
+          >
+            {{ cumulativePnl >= 0 ? "+" : "" }}¥{{ formatMoney(cumulativePnl) }}
           </span>
         </div>
         <div class="dialog-stat">
           <span class="dialog-stat-label">最终价值</span>
-          <span class="dialog-stat-value mono">¥{{ formatMoney(currentValue) }}</span>
+          <span class="dialog-stat-value mono"
+            >¥{{ formatMoney(currentValue) }}</span
+          >
         </div>
         <div class="dialog-stat" v-if="totalInvested > 0">
           <span class="dialog-stat-label">收益率</span>
-          <span class="dialog-stat-value" :class="cumulativePnl >= 0 ? 'up' : 'down'">
+          <span
+            class="dialog-stat-value"
+            :class="cumulativePnl >= 0 ? 'up' : 'down'"
+          >
             {{ ((cumulativePnl / totalInvested) * 100).toFixed(2) }}%
           </span>
         </div>
       </div>
       <template #footer>
-        <el-button type="primary" size="small" @click="resetAll">重新开始</el-button>
+        <el-button type="primary" size="small" @click="resetAll"
+          >重新开始</el-button
+        >
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, onBeforeUnmount, nextTick } from "vue"
-import { useRoute, useRouter } from "vue-router"
-import { invoke } from "@tauri-apps/api/core"
-import * as echarts from "echarts"
-import OpencodeService from "../service/opencode"
+import {
+  ref,
+  computed,
+  onMounted,
+  watch,
+  onBeforeUnmount,
+  nextTick,
+} from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { invoke } from "@tauri-apps/api/core";
+import * as echarts from "echarts";
+import OpencodeService from "../service/opencode";
 
 interface HistoryPoint {
-  timestamp: number
-  value: number
+  timestamp: number;
+  value: number;
 }
 
 interface FundHistory {
-  fund_code: string
-  fund_name: string
-  data: HistoryPoint[]
+  fund_code: string;
+  fund_name: string;
+  data: HistoryPoint[];
 }
 
-type Phase = "setup" | "simulate" | "complete"
+type Phase = "setup" | "simulate" | "complete";
 
-const route = useRoute()
-const router = useRouter()
+const route = useRoute();
+const router = useRouter();
 
-const fundCode = ref("")
-const fundName = ref("")
-const period = ref("1m")
-const loading = ref(false)
-const historyData = ref<HistoryPoint[]>([])
-const phase = ref<Phase>("setup")
-const showCompleteDialog = ref(false)
+const fundCode = ref("");
+const fundName = ref("");
+const period = ref("1m");
+const loading = ref(false);
+const historyData = ref<HistoryPoint[]>([]);
+const phase = ref<Phase>("setup");
+const showCompleteDialog = ref(false);
 
 function goBack() {
-  router.push("/")
+  router.push("/");
 }
 
 function formatDate(ts: number) {
-  const d = new Date(ts)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function parseDate(str: string): Date {
-  const [y, m, d] = str.split("-").map(Number)
-  return new Date(y, m - 1, d)
+  const [y, m, d] = str.split("-").map(Number);
+  return new Date(y, m - 1, d);
 }
 
 // ─── Daily Changes ───
 
 const dailyChanges = computed(() => {
-  const sorted = [...historyData.value].sort((a, b) => a.timestamp - b.timestamp)
-  const changes: { date: string; change: number }[] = []
+  const sorted = [...historyData.value].sort(
+    (a, b) => a.timestamp - b.timestamp,
+  );
+  const changes: { date: string; change: number }[] = [];
   for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1].value
-    const cur = sorted[i].value
-    const change = ((cur - prev) / (100 + prev)) * 100
-    changes.push({ date: formatDate(sorted[i].timestamp), change })
+    const prev = sorted[i - 1].value;
+    const cur = sorted[i].value;
+    const change = ((cur - prev) / (100 + prev)) * 100;
+    changes.push({ date: formatDate(sorted[i].timestamp), change });
   }
-  return changes
-})
+  return changes;
+});
 
 const minDate = computed(() => {
-  if (!dailyChanges.value.length) return new Date()
-  return parseDate(dailyChanges.value[0].date)
-})
+  if (!dailyChanges.value.length) return new Date();
+  return parseDate(dailyChanges.value[0].date);
+});
 
 const maxDate = computed(() => {
-  if (!dailyChanges.value.length) return new Date()
-  return parseDate(dailyChanges.value[dailyChanges.value.length - 1].date)
-})
+  if (!dailyChanges.value.length) return new Date();
+  return parseDate(dailyChanges.value[dailyChanges.value.length - 1].date);
+});
 
 // ─── Range Selection ───
 
-const rangeStartDate = ref<string>("")
-const rangeEndDate = ref<string>("")
+const rangeStartDate = ref<string>("");
+const rangeEndDate = ref<string>("");
 
 function findLastIndex<T>(arr: T[], fn: (item: T) => boolean): number {
   for (let i = arr.length - 1; i >= 0; i--) {
-    if (fn(arr[i])) return i
+    if (fn(arr[i])) return i;
   }
-  return -1
+  return -1;
 }
 
 const rangeDayCount = computed(() => {
-  if (!rangeStartDate.value || !rangeEndDate.value) return 0
-  const startIdx = dailyChanges.value.findIndex(d => d.date >= rangeStartDate.value)
-  const endIdx = findLastIndex(dailyChanges.value, d => d.date <= rangeEndDate.value)
-  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return 0
-  return endIdx - startIdx + 1
-})
+  if (!rangeStartDate.value || !rangeEndDate.value) return 0;
+  const startIdx = dailyChanges.value.findIndex(
+    (d) => d.date >= rangeStartDate.value,
+  );
+  const endIdx = findLastIndex(
+    dailyChanges.value,
+    (d) => d.date <= rangeEndDate.value,
+  );
+  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return 0;
+  return endIdx - startIdx + 1;
+});
 
 // ─── Simulation State ───
 
 interface SimulationDay {
-  date: string
-  change: number
-  investment: number
-  pnl: number
-  position: number
-  aiReason: string
+  date: string;
+  change: number;
+  investment: number;
+  pnl: number;
+  position: number;
+  aiReason: string;
 }
 
-const simDays = ref<SimulationDay[]>([])
-const currentStep = ref(0)
-const currentInvestment = ref(1000)
-const presets = [0, 100, 500, 1000, 5000, 10000]
-const currentDay = computed(() => simDays.value[currentStep.value] ?? { date: "", change: 0, investment: 0, pnl: 0, position: 0 })
+const simDays = ref<SimulationDay[]>([]);
+const currentStep = ref(0);
+const currentInvestment = ref(1000);
+const presets = [0, 100, 500, 1000, 5000, 10000];
+const currentDay = computed(
+  () =>
+    simDays.value[currentStep.value] ?? {
+      date: "",
+      change: 0,
+      investment: 0,
+      pnl: 0,
+      position: 0,
+    },
+);
 
 const totalInvested = computed(() =>
-  simDays.value.reduce((sum, d) => sum + d.investment, 0)
-)
+  simDays.value.reduce((sum, d) => sum + d.investment, 0),
+);
 
 const cumulativePnl = computed(() =>
-  simDays.value.reduce((sum, d) => sum + d.pnl, 0)
-)
+  simDays.value.reduce((sum, d) => sum + d.pnl, 0),
+);
 
-const totalBudget = 50000
+const totalBudget = 50000;
 const positionPct = computed(() =>
-  Math.min((totalInvested.value / totalBudget) * 100, 100)
-)
-const currentValue = computed(() => totalInvested.value + cumulativePnl.value)
+  Math.min((totalInvested.value / totalBudget) * 100, 100),
+);
+const currentValue = computed(() => totalInvested.value + cumulativePnl.value);
 
 function formatMoney(n: number): string {
-  return n.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return n.toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 // ─── Chart ───
 
-const chartRef = ref<HTMLElement | null>(null)
-let chartInstance: echarts.ECharts | null = null
+const chartRef = ref<HTMLElement | null>(null);
+let chartInstance: echarts.ECharts | null = null;
 
 const chartPoints = computed(() => {
-  if (!simDays.value.length || !historyData.value.length) return []
-  const sorted = [...historyData.value].sort((a, b) => a.timestamp - b.timestamp)
-  const firstSimDate = simDays.value[0].date
-  const firstPointIdx = sorted.findIndex(p => formatDate(p.timestamp) === firstSimDate)
-  if (firstPointIdx < 0) return sorted.slice(0, 2)
-  const showUpTo = Math.min(firstPointIdx + currentStep.value, sorted.length - 1)
-  const result = sorted.slice(0, 1)
+  if (!simDays.value.length || !historyData.value.length) return [];
+  const sorted = [...historyData.value].sort(
+    (a, b) => a.timestamp - b.timestamp,
+  );
+  const firstSimDate = simDays.value[0].date;
+  const firstPointIdx = sorted.findIndex(
+    (p) => formatDate(p.timestamp) === firstSimDate,
+  );
+  if (firstPointIdx < 0) return sorted.slice(0, 2);
+  const showUpTo = Math.min(
+    firstPointIdx + currentStep.value,
+    sorted.length - 1,
+  );
+  const result = sorted.slice(0, 1);
   for (let i = firstPointIdx; i <= showUpTo; i++) {
-    result.push(sorted[i])
+    result.push(sorted[i]);
   }
-  return result
-})
+  return result;
+});
 
 function buildChartOption() {
-  const points = chartPoints.value
-  if (!points.length) return {}
+  const points = chartPoints.value;
+  if (!points.length) return {};
 
-  const currentTs = currentStep.value < simDays.value.length
-    ? parseDate(simDays.value[currentStep.value].date).getTime()
-    : points[points.length - 1].timestamp
+  const currentTs =
+    currentStep.value < simDays.value.length
+      ? parseDate(simDays.value[currentStep.value].date).getTime()
+      : points[points.length - 1].timestamp;
 
-  const markLines: any[] = [{
-    xAxis: currentTs,
-    label: { show: false },
-    lineStyle: { color: "rgba(255,255,255,0.25)", type: "dashed", width: 1 },
-    symbol: "none",
-  }]
+  const markLines: any[] = [
+    {
+      xAxis: currentTs,
+      label: { show: false },
+      lineStyle: { color: "rgba(255,255,255,0.25)", type: "dashed", width: 1 },
+      symbol: "none",
+    },
+  ];
 
   // Add investment markPoints
-  const markPoints: any[] = []
+  const markPoints: any[] = [];
   simDays.value.forEach((day) => {
-    const pt = points.find(p => formatDate(p.timestamp) === day.date)
-    if (!pt) return
-    const isZero = day.investment === 0
+    const pt = points.find((p) => formatDate(p.timestamp) === day.date);
+    if (!pt) return;
+    const isZero = day.investment === 0;
     markPoints.push({
       coord: [pt.timestamp, pt.value],
       symbol: "circle",
@@ -375,14 +472,16 @@ function buildChartOption() {
       },
       label: {
         show: true,
-        formatter: isZero ? "0" : `¥${day.investment >= 10000 ? (day.investment / 10000).toFixed(1) + 'w' : day.investment.toFixed(0)}`,
+        formatter: isZero
+          ? "0"
+          : `¥${day.investment >= 10000 ? (day.investment / 10000).toFixed(1) + "w" : day.investment.toFixed(0)}`,
         position: "top",
         color: "#D4A84B",
         fontSize: 10,
         fontFamily: "SF Mono, monospace",
       },
-    })
-  })
+    });
+  });
 
   return {
     backgroundColor: "transparent",
@@ -390,9 +489,9 @@ function buildChartOption() {
     tooltip: {
       trigger: "axis",
       formatter: (params: any) => {
-        const p = params[0]
-        if (!p) return ""
-        return `${formatDate(p.data[0])}<br/>累计收益率: ${p.data[1].toFixed(2)}%`
+        const p = params[0];
+        if (!p) return "";
+        return `${formatDate(p.data[0])}<br/>累计收益率: ${p.data[1].toFixed(2)}%`;
       },
     },
     xAxis: {
@@ -413,278 +512,310 @@ function buildChartOption() {
       axisLine: { show: false },
       axisTick: { show: false },
     },
-    series: [{
-      type: "line",
-      data: points.map(p => [p.timestamp, p.value]),
-      smooth: true,
-      showSymbol: false,
-      lineStyle: { width: 2, color: "#D4A84B" },
-      areaStyle: {
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: "rgba(212,168,75,0.2)" },
-          { offset: 1, color: "rgba(212,168,75,0.01)" },
-        ]),
+    series: [
+      {
+        type: "line",
+        data: points.map((p) => [p.timestamp, p.value]),
+        smooth: true,
+        showSymbol: false,
+        lineStyle: { width: 2, color: "#D4A84B" },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: "rgba(212,168,75,0.2)" },
+            { offset: 1, color: "rgba(212,168,75,0.01)" },
+          ]),
+        },
+        markLine: {
+          silent: true,
+          symbol: "none",
+          data: markLines,
+        },
+        markPoint: {
+          silent: true,
+          symbol: "circle",
+          data: markPoints,
+        },
       },
-      markLine: {
-        silent: true,
-        symbol: "none",
-        data: markLines,
-      },
-      markPoint: {
-        silent: true,
-        symbol: "circle",
-        data: markPoints,
-      },
-    }],
-  }
+    ],
+  };
 }
 
 function renderChart() {
-  if (!chartRef.value || !chartPoints.value.length) return
+  if (!chartRef.value || !chartPoints.value.length) return;
   if (!chartInstance) {
-    chartInstance = echarts.init(chartRef.value, undefined, { renderer: "canvas" })
+    chartInstance = echarts.init(chartRef.value, undefined, {
+      renderer: "canvas",
+    });
   }
-  chartInstance.setOption(buildChartOption(), true)
-  chartInstance.resize()
+  chartInstance.setOption(buildChartOption(), true);
+  chartInstance.resize();
 }
 
 function updateChartMarker() {
-  if (!chartInstance || !chartPoints.value.length) return
-  chartInstance.setOption(buildChartOption(), true)
+  if (!chartInstance || !chartPoints.value.length) return;
+  chartInstance.setOption(buildChartOption(), true);
 }
 
 // ─── Watch chart ───
 
 watch(currentStep, () => {
-  nextTick(() => updateChartMarker())
-})
+  nextTick(() => updateChartMarker());
+});
 
-watch(simDays, () => {
-  nextTick(() => updateChartMarker())
-}, { deep: true })
+watch(
+  simDays,
+  () => {
+    nextTick(() => updateChartMarker());
+  },
+  { deep: true },
+);
 
 watch(period, () => {
   if (fundCode.value && phase.value === "setup") {
-    fetchData()
+    fetchData();
   }
-})
+});
 
 // ─── Actions ───
 
 async function fetchData() {
-  loading.value = true
+  loading.value = true;
   try {
     const result = await invoke<FundHistory>("get_fund_history", {
       fundCode: fundCode.value,
       period: period.value,
-    })
-    fundName.value = result.fund_name
-    historyData.value = result.data
+    });
+    fundName.value = result.fund_name;
+    historyData.value = result.data;
     // auto-set range to full available
     if (dailyChanges.value.length) {
-      rangeStartDate.value = dailyChanges.value[0].date
-      rangeEndDate.value = dailyChanges.value[dailyChanges.value.length - 1].date
+      rangeStartDate.value = dailyChanges.value[0].date;
+      rangeEndDate.value =
+        dailyChanges.value[dailyChanges.value.length - 1].date;
     }
   } catch (e) {
-    console.error(e)
+    console.error(e);
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
 function startSimulation() {
-  const startIdx = dailyChanges.value.findIndex(d => d.date >= rangeStartDate.value)
-  const endIdx = findLastIndex(dailyChanges.value, d => d.date <= rangeEndDate.value)
-  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return
+  const startIdx = dailyChanges.value.findIndex(
+    (d) => d.date >= rangeStartDate.value,
+  );
+  const endIdx = findLastIndex(
+    dailyChanges.value,
+    (d) => d.date <= rangeEndDate.value,
+  );
+  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return;
 
-  simDays.value = dailyChanges.value.slice(startIdx, endIdx + 1).map(d => ({
+  simDays.value = dailyChanges.value.slice(startIdx, endIdx + 1).map((d) => ({
     date: d.date,
     change: d.change,
     investment: 0,
     pnl: 0,
     position: 0,
     aiReason: "",
-  }))
-  currentStep.value = 0
-  currentInvestment.value = 1000
-  phase.value = "simulate"
-  nextTick(() => renderChart())
+  }));
+  currentStep.value = 0;
+  currentInvestment.value = 1000;
+  phase.value = "simulate";
+  nextTick(() => renderChart());
 }
 
 function confirmDay() {
-  const step = currentStep.value
-  const remaining = totalBudget - totalInvested.value
-  let inv = currentInvestment.value || 0
-  if (inv > remaining) inv = remaining
-  currentInvestment.value = inv
+  const step = currentStep.value;
+  const remaining = totalBudget - totalInvested.value;
+  let inv = currentInvestment.value || 0;
+  if (inv > remaining) inv = remaining;
+  currentInvestment.value = inv;
 
-  const day = simDays.value[step]
-  day.investment = inv
+  const day = simDays.value[step];
+  day.investment = inv;
 
   if (step === 0) {
-    day.pnl = 0
-    day.position = inv
+    day.pnl = 0;
+    day.position = inv;
   } else {
-    const prevPosition = simDays.value[step - 1].position
-    day.pnl = prevPosition * (day.change / 100)
-    day.position = prevPosition + day.pnl + inv
+    const prevPosition = simDays.value[step - 1].position;
+    day.pnl = prevPosition * (day.change / 100);
+    day.position = prevPosition + day.pnl + inv;
   }
 
   if (step >= simDays.value.length - 1) {
-    showCompleteDialog.value = true
+    showCompleteDialog.value = true;
   } else {
-    currentStep.value++
+    currentStep.value++;
   }
 }
 
 function resetAll() {
-  phase.value = "setup"
-  showCompleteDialog.value = false
-  simDays.value = []
-  currentStep.value = 0
+  phase.value = "setup";
+  showCompleteDialog.value = false;
+  simDays.value = [];
+  currentStep.value = 0;
   // reset chart
-  chartInstance?.dispose()
-  chartInstance = null
+  chartInstance?.dispose();
+  chartInstance = null;
 }
 
 // ─── AI Assistant ───
 
-const aiLoading = ref(false)
-const aiReason = ref("")
-const aiPutin = ref(0)
-const aiPrompt = ref("")
-const promptExpanded = ref(false)
-let aiInitialized = false
+const aiLoading = ref(false);
+const aiReason = ref("");
+const aiPutin = ref(0);
+const aiPrompt = ref("");
+const promptExpanded = ref(false);
+let aiInitialized = false;
 
 async function askAI() {
-  aiLoading.value = true
+  aiLoading.value = true;
   try {
     if (!aiInitialized) {
-      await OpencodeService.initialize(fundCode.value)
-      aiInitialized = true
+      await OpencodeService.initialize(fundCode.value);
+      aiInitialized = true;
     }
 
-    const remaining = totalBudget - totalInvested.value
-    const pastDays = simDays.value.slice(0, currentStep.value + 1)
-    const historyText = pastDays.map((d, i) =>
-      `第${i + 1}天 ${d.date}: 涨跌 ${d.change >= 0 ? '+' : ''}${d.change.toFixed(2)}%, 投入 ¥${d.investment}, 盈亏 ¥${d.pnl.toFixed(2)}, 持仓 ¥${d.position.toFixed(2)}`
-    ).join("\n")
+    const remaining = totalBudget - totalInvested.value;
+    const pastDays = simDays.value.slice(0, currentStep.value + 1);
+    const historyText = pastDays
+      .map(
+        (d, i) =>
+          `第${i + 1}天 ${d.date}: 涨跌 ${d.change >= 0 ? "+" : ""}${d.change.toFixed(2)}%, 投入 ¥${d.investment}, 盈亏 ¥${d.pnl.toFixed(2)}, 持仓 ¥${d.position.toFixed(2)}`,
+      )
+      .join("\n");
 
-    const prompt = `你是基金投资顾问。请分析以下数据，给出今日建议投资额度。
+    const prompt = `你是量化基金投资顾问。请参考以下经典量化策略，结合数据分析给出今日建议投资额度。
+
+## 经典量化策略参考
+
+1. **网格交易法** — 设定基准价，每跌一定幅度加仓，每涨一定幅度减仓，适合震荡市
+2. **定投策略 (DCA)** — 无视波动定期定额投入，平滑成本
+3. **动量策略** — 趋势向上时加仓，趋势向下时减仓或空仓
+4. **均值回归** — 连续上涨后降低仓位（恐高），连续下跌后增加仓位（贪婪）
+5. **金字塔建仓** — 初始轻仓，越跌越加大仓位，越涨越减小仓位
+6. **凯利公式** — 根据近期胜率与盈亏比计算最优仓位比例
+7. **股债平衡** — 将总投资预算视为一个组合，维持股债目标比例，偏离时再平衡
+8. **趋势跟踪 (移动均线)** — 价格在均线上方做多，下方减仓
+
+## 当前持仓与市场数据
 
 基金代码：${fundCode.value}
 总投资预算：¥${formatMoney(totalBudget)}
-今日涨跌幅：${currentDay.value.change >= 0 ? '+' : ''}${currentDay.value.change.toFixed(2)}%
+今日涨跌幅：${currentDay.value.change >= 0 ? "+" : ""}${currentDay.value.change.toFixed(2)}%
 已投入金额：¥${formatMoney(totalInvested.value)}
-累计盈亏：${cumulativePnl.value >= 0 ? '+' : ''}¥${formatMoney(cumulativePnl.value)}
+累计盈亏：${cumulativePnl.value >= 0 ? "+" : ""}¥${formatMoney(cumulativePnl.value)}
 当前总价值：¥${formatMoney(currentValue.value)}
 剩余可用资金：¥${formatMoney(remaining)}
+仓位比例：${positionPct.value.toFixed(1)}%
 
-模拟周期内每日数据：
+## 每日明细
 ${historyText}
 
-请基于今日涨跌幅和持仓情况，给出一个合理的投资额度（范围 0 ~ ${remaining.toFixed(0)}，单位：元）。
+请综合以上策略，基于今日涨跌幅和当前持仓给出建议。返回可以直接解析的JSON格式数据（不要其他文字）：
+{"reason":"说明你参考了哪个策略、分析逻辑和理由","putin":建议金额}`;
 
-请用以下 JSON 格式返回（不要其他文字）：
-{"reason":"给出理由","putin":建议投资金额}`
-
-    aiPrompt.value = prompt
-    const reply = await OpencodeService.sendMessage(prompt)
+    aiPrompt.value = prompt;
+    const reply = await OpencodeService.sendMessage(prompt);
     try {
-      const parsed = JSON.parse(reply)
-      aiReason.value = parsed.reason || ""
-      const recommended = Math.min(Math.max(Number(parsed.putin) || 0, 0), remaining)
-      aiPutin.value = recommended
-      currentInvestment.value = recommended
-      simDays.value[currentStep.value].aiReason = aiReason.value
+      const parsed = JSON.parse(reply);
+      aiReason.value = parsed.reason || "";
+      const recommended = Math.min(
+        Math.max(Number(parsed.putin) || 0, 0),
+        remaining,
+      );
+      aiPutin.value = recommended;
+      currentInvestment.value = recommended;
+      simDays.value[currentStep.value].aiReason = aiReason.value;
     } catch {
-      aiReason.value = reply
-      const match = reply.match(/\d+/)
+      aiReason.value = reply;
+      const match = reply.match(/\d+/);
       if (match) {
-        const recommended = Math.min(Math.max(Number(match[0]), 0), remaining)
-        aiPutin.value = recommended
-        currentInvestment.value = recommended
+        const recommended = Math.min(Math.max(Number(match[0]), 0), remaining);
+        aiPutin.value = recommended;
+        currentInvestment.value = recommended;
       }
-      simDays.value[currentStep.value].aiReason = aiReason.value
+      simDays.value[currentStep.value].aiReason = aiReason.value;
     }
   } catch (e) {
-    console.error("AI 建议失败", e)
+    console.error("AI 建议失败", e);
   } finally {
-    aiLoading.value = false
+    aiLoading.value = false;
   }
 }
 
 // ─── AI Auto Simulation ───
 
-const aiAutoRunning = ref(false)
+const aiAutoRunning = ref(false);
 
 async function runAiAutoSimulation() {
-  aiAutoRunning.value = true
+  aiAutoRunning.value = true;
   // reset simulation back to day 1
-  currentStep.value = 0
-  currentInvestment.value = 0
+  currentStep.value = 0;
+  currentInvestment.value = 0;
   for (const d of simDays.value) {
-    d.investment = 0
-    d.pnl = 0
-    d.position = 0
-    d.aiReason = ""
+    d.investment = 0;
+    d.pnl = 0;
+    d.position = 0;
+    d.aiReason = "";
   }
-  chartInstance?.dispose()
-  chartInstance = null
-  nextTick(() => renderChart())
+  chartInstance?.dispose();
+  chartInstance = null;
+  nextTick(() => renderChart());
 
   // restart opencode service to clear session history
-  await OpencodeService.killAll()
-  aiInitialized = false
+  await OpencodeService.killAll();
+  aiInitialized = false;
 
   try {
     while (currentStep.value < simDays.value.length) {
-      await askAI()
-      confirmDay()
-      if (showCompleteDialog.value) break
-      await new Promise(r => setTimeout(r, 100))
+      await askAI();
+      confirmDay();
+      if (showCompleteDialog.value) break;
+      await new Promise((r) => setTimeout(r, 100));
     }
   } catch (e) {
-    console.error("AI 自动模拟失败", e)
+    console.error("AI 自动模拟失败", e);
   } finally {
-    aiAutoRunning.value = false
+    aiAutoRunning.value = false;
   }
 }
 
 function togglePrompt() {
-  promptExpanded.value = !promptExpanded.value
+  promptExpanded.value = !promptExpanded.value;
 }
 
 // ─── Lifecycle ───
 
 onMounted(() => {
-  fundCode.value = route.params.code as string
-  window.addEventListener("resize", handleResize)
+  fundCode.value = route.params.code as string;
+  window.addEventListener("resize", handleResize);
   if (fundCode.value) {
-    fetchData()
+    fetchData();
   }
-})
+});
 
 onBeforeUnmount(() => {
-  window.removeEventListener("resize", handleResize)
-  chartInstance?.dispose()
-  chartInstance = null
-})
+  window.removeEventListener("resize", handleResize);
+  chartInstance?.dispose();
+  chartInstance = null;
+});
 
 function handleResize() {
-  chartInstance?.resize()
+  chartInstance?.resize();
 }
 
 watch(
   () => route.params.code,
   (code) => {
     if (code && code !== fundCode.value) {
-      fundCode.value = code as string
-      fundName.value = ""
-      resetAll()
+      fundCode.value = code as string;
+      fundName.value = "";
+      resetAll();
     }
   },
-)
+);
 </script>
 
 <style scoped>
@@ -1005,7 +1136,7 @@ watch(
 .position-track {
   flex: 1;
   height: 4px;
-  background: rgba(255,255,255,0.06);
+  background: rgba(255, 255, 255, 0.06);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -1148,6 +1279,4 @@ watch(
   border-top: 1px solid var(--border-subtle);
   padding: 12px 20px;
 }
-
-
 </style>
