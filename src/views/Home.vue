@@ -61,6 +61,15 @@
           <span v-if="showFavoritesOnly" class="filter-count"
             >{{ filteredFunds.length.toLocaleString() }} 只</span
           >
+          <button
+            v-if="showFavoritesOnly"
+            class="btn btn-primary batch-btn"
+            :disabled="batchAnalyzing"
+            @click="startBatchAnalyze"
+          >
+            <span v-if="batchAnalyzing" class="spinner"></span>
+            {{ batchAnalyzing ? batchProgressText : "一键分析明日推荐" }}
+          </button>
         </div>
       </div>
       <div class="toolbar-right" v-show="!showFavoritesOnly">
@@ -424,7 +433,58 @@
           </div>
         </div>
         <div class="dialog-footer">
+          <button class="btn-done" @click="computeSuggestion">明日投资建议</button>
           <button class="btn-primary" @click="showInvestDetailDialog = false">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Investment Suggestion Dialog -->
+    <div v-if="showSuggestDialog" class="dialog-overlay" @click.self="showSuggestDialog = false">
+      <div class="dialog-panel suggest-dialog">
+        <div class="dialog-header">
+          <h3>明日投资建议</h3>
+          <button class="dialog-close" @click="showSuggestDialog = false">×</button>
+        </div>
+        <div class="dialog-body">
+          <div v-if="suggestLoading" class="suggest-prompt-area">
+            <div class="suggest-prompt-label">发送给 AI 的提示词：</div>
+            <div class="suggest-prompt-text">{{ suggestResult }}</div>
+            <div class="suggest-loading-bar">
+              <div class="loading-spinner"></div>
+              <span>等待 AI 回复...</span>
+            </div>
+          </div>
+          <div v-else class="suggest-result" v-html="md.render(suggestResult)"></div>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn-done" @click="showSuggestDialog = false">关闭</button>
+        </div>
+      </div>
+    </div>
+    <!-- Batch Analysis Dialog -->
+    <div v-if="showBatchDialog" class="dialog-overlay" @click.self="showBatchDialog = false">
+      <div class="dialog-panel batch-dialog">
+        <div class="dialog-header">
+          <h3>一键分析明日推荐</h3>
+          <button class="dialog-close" @click="showBatchDialog = false">×</button>
+        </div>
+        <div class="dialog-body">
+          <div v-if="batchAnalyzing" class="batch-loading">
+            <div class="loading-spinner"></div>
+            <span>{{ batchProgressText }}</span>
+          </div>
+          <div v-if="batchError" class="batch-error">{{ batchError }}</div>
+          <div v-for="item in batchResults" :key="item.code" class="batch-item">
+            <div class="batch-item-header">
+              <span class="batch-item-code">{{ item.code }}</span>
+              <span class="batch-item-name">{{ item.name }}</span>
+            </div>
+            <div class="batch-item-result" v-html="md.render(item.result)"></div>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn-done" @click="showBatchDialog = false">关闭</button>
         </div>
       </div>
     </div>
@@ -436,6 +496,10 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { useRouter } from "vue-router";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import OpencodeService from "../service/opencode";
+import MarkdownIt from "markdown-it";
+
+const md = new MarkdownIt({ html: false, linkify: true });
 
 interface FundItem {
   id: string;
@@ -469,10 +533,10 @@ const loading = ref(false);
 const progressText = ref("");
 const historyLoading = ref(false);
 const historyProgressText = ref("");
-const batchPeriod = ref("1m");
+const batchPeriod = ref("3m");
 const periodLabel = computed(() => {
   const map: Record<string, string> = {
-    "1m": "1个月",
+    // "1m": "1个月",
     "3m": "3个月",
     "6m": "6个月",
     "1y": "1年",
@@ -481,14 +545,14 @@ const periodLabel = computed(() => {
   return map[batchPeriod.value] || "全部";
 });
 const periodOptions = [
-  { value: "1m", label: "1个月" },
+  // { value: "1m", label: "1个月" },
   { value: "3m", label: "3个月" },
   { value: "6m", label: "6个月" },
   { value: "1y", label: "1年" },
   { value: "all", label: "全部" },
 ];
 const showPeriodMenu = ref(false);
-const showFavoritesOnly = ref(false);
+const showFavoritesOnly = ref(true);
 const search = ref("");
 
 const funds = ref<FundItem[]>([]);
@@ -951,6 +1015,130 @@ async function showInvestDetail(code: string) {
   }
 }
 
+// ─── Batch Analysis ───
+
+const batchAnalyzing = ref(false);
+const batchProgressText = ref("");
+const showBatchDialog = ref(false);
+const batchResults = ref<Array<{ code: string; name: string; result: string }>>([]);
+const batchError = ref("");
+
+async function startBatchAnalyze() {
+  const targetFunds = funds.value.filter((f) => favorites.value.has(f.id) && investedCodes.value.has(f.id));
+  if (!targetFunds.length) return;
+
+  batchAnalyzing.value = true;
+  batchResults.value = [];
+  batchError.value = "";
+  showBatchDialog.value = true;
+
+  try {
+    if (!OpencodeService.baseUrl) {
+      batchProgressText.value = "启动 AI 服务...";
+      await OpencodeService.initialize("funds");
+    }
+
+    for (let i = 0; i < targetFunds.length; i++) {
+      const fund = targetFunds[i];
+      batchProgressText.value = `分析 ${fund.id} ${fund.name} (${i + 1}/${targetFunds.length})`;
+
+      let history: HistoryPoint[];
+      try {
+        const result = await invoke<FundHistory>("get_fund_history", {
+          fundCode: fund.id,
+          period: "1y",
+        });
+        history = result.data;
+      } catch {
+        batchResults.value.push({ code: fund.id, name: fund.name, result: "获取历史数据失败" });
+        continue;
+      }
+
+      const sorted = history.sort((a, b) => a.timestamp - b.timestamp);
+      const threeMonthsAgo = Date.now() - 90 * 24 * 60 * 60 * 1000;
+      const recent = sorted.filter((p) => p.timestamp >= threeMonthsAgo);
+
+      const dailyReturns: string[] = [];
+      for (let j = 1; j < recent.length; j++) {
+        const ret = ((recent[j].value - recent[j - 1].value) / (100 + recent[j - 1].value)) * 100;
+        dailyReturns.push(`${formatDate(recent[j].timestamp)} ${ret.toFixed(2)}%`);
+      }
+
+      const inv = investments.value.find((i) => i.code === fund.id);
+      const scheduleEntries = inv
+        ? Object.entries(inv.schedule).filter(([, v]) => v > 0).map(([ts, v]) => `${formatDate(Number(ts))} ¥${v}`)
+        : [];
+
+      let prompt = `你是一个量化投资顾问。以下是基金 ${fund.id}（${fund.name}）近3个月的每日涨跌幅数据：\n\n`;
+      prompt += dailyReturns.join("\n");
+      if (scheduleEntries.length) {
+        prompt += `\n\n用户的定投记录：\n${scheduleEntries.join("\n")}`;
+      }
+      prompt += `\n请基于量化投资的角度，结合该基金近3个月的实际波动情况，定义明日大涨、小涨、小跌、大跌的涨跌幅阈值，并给出对应的投资建议。\n\n请直接用 Markdown 表格列出 4 种情况（列：涨跌情况、建议操作、建议金额），不要任何额外说明。阈值请基于数据自行判断。用中文回答。`;
+
+      try {
+        const reply = await OpencodeService.sendMessage(prompt);
+        batchResults.value.push({ code: fund.id, name: fund.name, result: reply || "无回复" });
+      } catch {
+        batchResults.value.push({ code: fund.id, name: fund.name, result: "AI 分析失败" });
+      }
+    }
+  } catch (e) {
+    batchError.value = "AI 服务启动失败";
+  } finally {
+    batchAnalyzing.value = false;
+    batchProgressText.value = "";
+  }
+}
+
+// ─── Investment Suggestion ───
+
+const showSuggestDialog = ref(false);
+const suggestLoading = ref(false);
+const suggestResult = ref("");
+
+async function computeSuggestion() {
+  if (!investDetailFund.value || !detailHistory.value.length) return;
+
+  const sorted = [...detailHistory.value].sort((a, b) => a.timestamp - b.timestamp);
+  const threeMonthsAgo = Date.now() - 90 * 24 * 60 * 60 * 1000;
+  const recent = sorted.filter((p) => p.timestamp >= threeMonthsAgo);
+
+  const dailyReturns: string[] = [];
+  for (let i = 1; i < recent.length; i++) {
+    const ret = ((recent[i].value - recent[i - 1].value) / (100 + recent[i - 1].value)) * 100;
+    dailyReturns.push(`${formatDate(recent[i].timestamp)} ${ret.toFixed(2)}%`);
+  }
+
+  const scheduleEntries = Object.entries(investDetailFund.value.schedule)
+    .filter(([, v]) => v > 0)
+    .map(([ts, v]) => `${formatDate(Number(ts))} ¥${v}`);
+
+  let prompt = `你是一个量化投资顾问。以下是基金 ${investDetailFund.value.code} 近3个月的每日涨跌幅数据：\n\n`;
+  prompt += dailyReturns.join("\n");
+  if (scheduleEntries.length) {
+    prompt += `\n\n用户的定投记录：\n${scheduleEntries.join("\n")}`;
+  }
+  prompt += `\n\n请基于量化投资的角度，结合该基金近3个月的实际波动情况，定义明日大涨、小涨、小跌、大跌的涨跌幅阈值，并给出对应的投资建议。\n\n请先在顶部用 Markdown 表格形式列出 4 种情况的摘要（列：涨跌情况、建议操作、建议金额），再展开详细说明。阈值请基于数据自行判断，不要硬编码固定值。用中文回答。`;
+
+  suggestResult.value = prompt;
+  suggestLoading.value = true;
+  showSuggestDialog.value = true;
+
+  try {
+    if (!OpencodeService.baseUrl) {
+      await OpencodeService.initialize(investDetailFund.value.code);
+    }
+    const reply = await OpencodeService.sendMessage(prompt);
+    suggestResult.value = reply || "无法获取建议，请稍后重试";
+  } catch (e) {
+    console.error(e);
+    suggestResult.value = "AI 服务暂不可用，请稍后重试";
+  } finally {
+    suggestLoading.value = false;
+  }
+}
+
 async function fetchAllFunds() {
   loading.value = true;
   progressText.value = "0/0";
@@ -1128,6 +1316,9 @@ onBeforeUnmount(() => {
 .filter-count {
   font-size: 12px;
   color: var(--text-secondary);
+}
+.batch-btn {
+  margin-left: auto;
 }
 
 /* ─── Search ─── */
@@ -2034,6 +2225,151 @@ onBeforeUnmount(() => {
   font-weight: 700;
   color: var(--accent-gold);
   padding: 8px 0 0;
+}
+
+/* ─── Suggest Dialog ─── */
+
+.suggest-dialog {
+  width: 460px;
+}
+.suggest-prompt-area {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.suggest-prompt-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.suggest-prompt-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 8px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  font-family: var(--font-display);
+}
+.suggest-loading-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.suggest-result {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.8;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.suggest-result :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+}
+.suggest-result :deep(th) {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+.suggest-result :deep(td) {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13px;
+}
+.suggest-result :deep(p) {
+  margin: 8px 0;
+}
+.suggest-result :deep(strong) {
+  color: var(--accent-gold);
+}
+
+/* ─── Batch Dialog ─── */
+
+.batch-dialog {
+  width: 640px;
+  max-height: 80vh;
+}
+.batch-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.batch-error {
+  color: #e74c3c;
+  font-size: 13px;
+  padding: 8px 0;
+}
+.batch-item {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.batch-item-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.batch-item-code {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-gold);
+}
+.batch-item-name {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.batch-item-result {
+  padding: 10px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.batch-item-result :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 8px;
+}
+.batch-item-result :deep(th) {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+.batch-item-result :deep(td) {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+}
+.batch-item-result :deep(p) {
+  margin: 4px 0;
+}
+.batch-item-result :deep(strong) {
+  color: var(--accent-gold);
 }
 
 /* Animations */

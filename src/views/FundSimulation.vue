@@ -306,14 +306,14 @@ const router = useRouter();
 
 const fundCode = ref("");
 const fundName = ref("");
-const period = ref("1m");
+const period = ref("3m");
 const loading = ref(false);
 const historyData = ref<HistoryPoint[]>([]);
 const phase = ref<Phase>("setup");
 const showCompleteDialog = ref(false);
 
 const periodOptions = [
-  { value: "1m", label: "1个月" },
+  // { value: "1m", label: "1个月" },
   { value: "3m", label: "3个月" },
   { value: "6m", label: "6个月" },
   { value: "1y", label: "1年" },
