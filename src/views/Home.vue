@@ -2301,8 +2301,15 @@ onBeforeUnmount(() => {
 /* ─── Batch Dialog ─── */
 
 .batch-dialog {
-  width: 640px;
-  max-height: 80vh;
+  width: 80%;
+  max-width: 1200px;
+  max-height: 85vh;
+}
+.batch-dialog .dialog-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-content: start;
 }
 .batch-loading {
   display: flex;
