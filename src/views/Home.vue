@@ -8,8 +8,15 @@
     <div class="toolbar">
       <div class="toolbar-left">
         <div class="search-wrap">
-          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          <svg
+            class="search-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
           </svg>
           <input
             v-model="search"
@@ -20,11 +27,36 @@
         <span v-if="funds.length" class="total-count">
           共 {{ funds.length.toLocaleString() }} 只基金
         </span>
-        <span v-if="search && filteredFunds.length !== funds.length" class="filtered-count">
+        <span
+          v-if="search && filteredFunds.length !== funds.length"
+          class="filtered-count"
+        >
           / {{ filteredFunds.length.toLocaleString() }} 只
         </span>
+
+        <div class="filter-bar" v-show="funds.length">
+          <div class="view-tabs">
+            <button
+              class="view-tab"
+              :class="{ active: !showFavoritesOnly }"
+              @click="showFavoritesOnly = false"
+            >
+              全部
+            </button>
+            <button
+              class="view-tab"
+              :class="{ active: showFavoritesOnly }"
+              @click="showFavoritesOnly = true"
+            >
+              收藏
+            </button>
+          </div>
+          <span v-if="showFavoritesOnly" class="filter-count"
+            >{{ filteredFunds.length.toLocaleString() }} 只</span
+          >
+        </div>
       </div>
-      <div class="toolbar-right">
+      <div class="toolbar-right" v-show="!showFavoritesOnly">
         <button class="btn btn-ghost" @click="openHistoryDir">历史缓存</button>
 
         <div class="btn-group">
@@ -34,7 +66,9 @@
             @click="fetchAllHistory"
           >
             <span v-if="historyLoading" class="spinner"></span>
-            {{ historyLoading ? historyProgressText : `批量获取(${periodLabel})` }}
+            {{
+              historyLoading ? historyProgressText : `批量获取(${periodLabel})`
+            }}
           </button>
           <button
             class="btn btn-outline btn-arrow"
@@ -43,7 +77,7 @@
             ref="periodToggleRef"
           >
             <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
-              <path d="M7 10l5 5 5-5z"/>
+              <path d="M7 10l5 5 5-5z" />
             </svg>
           </button>
           <div v-if="showPeriodMenu" class="dropdown-menu">
@@ -84,7 +118,10 @@
       <div class="table-body" ref="tableBodyRef" @scroll="onTableScroll">
         <template v-if="filteredFunds.length">
           <div class="virtual-sizer" :style="{ height: totalHeight + 'px' }">
-            <div class="virtual-content" :style="{ transform: `translateY(${offsetY}px)` }">
+            <div
+              class="virtual-content"
+              :style="{ transform: `translateY(${offsetY}px)` }"
+            >
               <div
                 v-for="row in visibleRows"
                 :key="row.id"
@@ -101,14 +138,38 @@
                   <span class="company-text">{{ row.company_name }}</span>
                 </div>
                 <div class="td col-action">
-                  <button class="action-btn" @click="viewHistory(row.id)">走势</button>
+                  <button
+                    class="star-btn"
+                    :class="{ starred: isFavorite(row.id) }"
+                    @click="toggleFavorite(row.id)"
+                    :title="isFavorite(row.id) ? '取消收藏' : '收藏'"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="14"
+                      height="14"
+                      fill="currentColor"
+                    >
+                      <path
+                        d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                      />
+                    </svg>
+                  </button>
+                  <button class="action-btn" @click="viewHistory(row.id)">
+                    走势
+                  </button>
                   <span class="action-divider"></span>
-                  <button class="action-btn" @click="viewSimulation(row.id)">量化模拟</button>
+                  <button class="action-btn" @click="viewSimulation(row.id)">
+                    量化模拟
+                  </button>
                 </div>
                 <div class="td col-status">
                   <span class="status-cell">
-                    <span class="status-dot" :class="hasHistory(row.id) ? 'yes' : 'no'"></span>
-                    {{ hasHistory(row.id) ? '有' : '无' }}
+                    <span
+                      class="status-dot"
+                      :class="hasHistory(row.id) ? 'yes' : 'no'"
+                    ></span>
+                    {{ hasHistory(row.id) ? "有" : "无" }}
                   </span>
                 </div>
               </div>
@@ -116,12 +177,25 @@
           </div>
         </template>
         <div v-else class="empty-state">
-          <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <rect x="3" y="3" width="18" height="18" rx="2"/>
-            <path d="M9 3v18M15 3v18M3 9h18M3 15h18"/>
+          <svg
+            class="empty-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
           </svg>
-          <p>{{ search ? '没有匹配的基金' : '暂无数据' }}</p>
-          <p v-if="!search" class="empty-hint">点击「更新基金列表」获取数据</p>
+          <p v-if="search">没有匹配的基金</p>
+          <p v-else-if="showFavoritesOnly">还没有收藏的基金</p>
+          <p v-else>暂无数据</p>
+          <p v-if="!search && !showFavoritesOnly" class="empty-hint">
+            点击「更新基金列表」获取数据
+          </p>
+          <p v-if="!search && showFavoritesOnly" class="empty-hint">
+            点击基金行中的星标按钮收藏
+          </p>
         </div>
       </div>
 
@@ -189,21 +263,52 @@ const periodOptions = [
   { value: "all", label: "全部" },
 ];
 const showPeriodMenu = ref(false);
+const showFavoritesOnly = ref(false);
 const search = ref("");
 
 const funds = ref<FundItem[]>([]);
 const cachedHistoryCodes = ref(new Set<string>());
+const favorites = ref(new Set<string>());
 
 const filteredFunds = computed(() => {
+  let list = funds.value;
+  if (showFavoritesOnly.value) {
+    list = list.filter((f) => favorites.value.has(f.id));
+  }
   const q = search.value.trim().toLowerCase();
-  if (!q) return funds.value;
-  return funds.value.filter(
+  if (!q) return list;
+  return list.filter(
     (f) => f.id.toLowerCase().includes(q) || f.name.toLowerCase().includes(q),
   );
 });
 
 function hasHistory(code: string) {
   return cachedHistoryCodes.value.has(code);
+}
+
+function isFavorite(code: string) {
+  return favorites.value.has(code);
+}
+
+async function toggleFavorite(code: string) {
+  const had = favorites.value.has(code);
+  if (had) {
+    favorites.value.delete(code);
+  } else {
+    favorites.value.add(code);
+  }
+  try {
+    const result = await invoke<string[]>("toggle_favorite", {
+      fundCode: code,
+    });
+    favorites.value = new Set(result);
+  } catch {
+    if (had) {
+      favorites.value.add(code);
+    } else {
+      favorites.value.delete(code);
+    }
+  }
 }
 
 const tableContainerRef = ref<HTMLElement>();
@@ -219,7 +324,8 @@ const startIndex = computed(() =>
 const endIndex = computed(() =>
   Math.min(
     filteredFunds.value.length,
-    Math.ceil((scrollTop.value + containerHeight.value) / ROW_HEIGHT) + OVERSCAN,
+    Math.ceil((scrollTop.value + containerHeight.value) / ROW_HEIGHT) +
+      OVERSCAN,
   ),
 );
 const visibleRows = computed(() =>
@@ -262,6 +368,13 @@ async function loadCachedHistoryCodes() {
   } catch (_e) {}
 }
 
+async function loadFavorites() {
+  try {
+    const codes = await invoke<string[]>("get_favorites");
+    favorites.value = new Set(codes);
+  } catch (_e) {}
+}
+
 async function fetchAllFunds() {
   loading.value = true;
   progressText.value = "0/0";
@@ -282,6 +395,7 @@ async function fetchAllFunds() {
     await nextTick();
     updateTableSize();
     loadCachedHistoryCodes();
+    loadFavorites();
   } catch (e) {
     console.error(e);
     progressText.value = "获取失败";
@@ -338,6 +452,7 @@ onMounted(async () => {
   document.addEventListener("mousedown", closePeriodMenu);
   if (cache) {
     funds.value = cache;
+    loadFavorites();
     await nextTick();
     updateTableSize();
     return;
@@ -350,6 +465,7 @@ onMounted(async () => {
     }
   } catch (_e) {}
   loadCachedHistoryCodes();
+  loadFavorites();
   await nextTick();
   updateTableSize();
 
@@ -419,6 +535,21 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+  flex: 0 0 auto;
+}
+
+/* ─── Filter Bar ─── */
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px 6px;
+  flex-shrink: 0;
+}
+.filter-count {
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 /* ─── Search ─── */
@@ -449,7 +580,9 @@ onBeforeUnmount(() => {
   font-family: var(--font-display);
   font-size: 13px;
   outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 .search-input::placeholder {
   color: var(--text-muted);
@@ -468,6 +601,36 @@ onBeforeUnmount(() => {
   font-size: 13px;
   color: var(--accent-gold);
   white-space: nowrap;
+}
+
+/* ─── View Tabs ─── */
+
+.view-tabs {
+  display: flex;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.view-tab {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 0 12px;
+  height: 26px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+.view-tab:hover {
+  color: var(--accent-gold);
+}
+.view-tab.active {
+  background: var(--accent-gold);
+  color: #0b0b0f;
 }
 
 /* ─── Buttons ─── */
@@ -513,7 +676,7 @@ onBeforeUnmount(() => {
 .btn-primary {
   background: var(--accent-gold);
   border-color: var(--accent-gold);
-  color: #0B0B0F;
+  color: #0b0b0f;
 }
 .btn-primary:hover:not(:disabled) {
   background: var(--accent-gold-hover);
@@ -583,7 +746,9 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ─── Table ─── */
@@ -635,7 +800,7 @@ onBeforeUnmount(() => {
 /* Row */
 .tr {
   display: grid;
-  grid-template-columns: 120px 1fr 200px 140px 72px;
+  grid-template-columns: 120px 1fr 200px 170px 72px;
   align-items: center;
   border-bottom: 1px solid var(--border-subtle);
   transition: background-color 0.15s ease;
@@ -657,7 +822,8 @@ onBeforeUnmount(() => {
 .col-code {
   padding-left: 4px;
 }
-.col-action, .col-status {
+.col-action,
+.col-status {
   justify-content: center;
 }
 .col-status {
@@ -690,6 +856,28 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Star button */
+.star-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 6px 0 2px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  transition:
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+.star-btn:hover {
+  color: var(--accent-gold);
+  transform: scale(1.15);
+}
+.star-btn.starred {
+  color: var(--accent-gold);
 }
 
 /* Action buttons */

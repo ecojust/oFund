@@ -148,6 +148,30 @@ async fn fetch_all_history(
 }
 
 #[tauri::command]
+fn get_favorites(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+    Ok(
+        fund_storage::load_json::<Vec<String>>(&app, "favorites.json")?
+            .unwrap_or_default(),
+    )
+}
+
+#[tauri::command]
+fn toggle_favorite(app: tauri::AppHandle, fund_code: String) -> Result<Vec<String>, String> {
+    let mut favorites = fund_storage::load_json::<Vec<String>>(&app, "favorites.json")?
+        .unwrap_or_default();
+
+    if let Some(pos) = favorites.iter().position(|c| c == &fund_code) {
+        favorites.remove(pos);
+    } else {
+        favorites.push(fund_code);
+    }
+
+    fund_storage::save_json(&app, "favorites.json", &favorites)?;
+
+    Ok(favorites)
+}
+
+#[tauri::command]
 async fn get_fund_history(
     _app: tauri::AppHandle,
     fund_code: String,
@@ -176,6 +200,8 @@ pub fn run() {
             open_history_dir,
             get_fund_history,
             fetch_all_history,
+            get_favorites,
+            toggle_favorite,
             execute_opencode_serve,
             kill_existing_opencode_processes,
         ])
