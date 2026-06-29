@@ -3,6 +3,13 @@
     <div class="brand">
       <h1><span class="brand-o">o</span>Fund</h1>
       <span class="tagline">基金策略分析工具</span>
+      <div class="brand-spacer"></div>
+      <button class="account-btn" @click="openAccountDialog" title="账户配置">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="8" r="4" />
+          <path d="M4 20c0-4 3.5-7 8-7s8 3 8 7" />
+        </svg>
+      </button>
     </div>
 
     <div class="toolbar">
@@ -162,6 +169,17 @@
                   <button class="action-btn" @click="viewSimulation(row.id)">
                     量化模拟
                   </button>
+                  <button
+                    v-if="investedCodes.has(row.id)"
+                    class="coin-btn"
+                    @click="showInvestDetail(row.id)"
+                    title="投资明细"
+                  >
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                      <circle cx="12" cy="12" r="10" />
+                      <text x="12" y="16" text-anchor="middle" font-size="14" font-weight="bold" fill="#0b0b0f">¥</text>
+                    </svg>
+                  </button>
                 </div>
                 <div class="td col-status">
                   <span class="status-cell">
@@ -201,6 +219,213 @@
 
       <div v-if="loading" class="loading-overlay">
         <div class="loading-spinner"></div>
+      </div>
+    </div>
+
+    <!-- Account Dialog: investment list -->
+    <div v-if="showAccountDialog" class="dialog-overlay" @click.self="showAccountDialog = false">
+      <div class="dialog-panel account-dialog">
+        <div class="dialog-header">
+          <h3>基金投资明细</h3>
+          <button class="dialog-close" @click="showAccountDialog = false">×</button>
+        </div>
+        <div class="dialog-body">
+          <div v-if="investments.length === 0" class="empty-investments">
+            <p>暂无投资记录</p>
+          </div>
+          <div v-else class="investment-list">
+            <div
+              v-for="(inv, idx) in investments"
+              :key="inv.code"
+              class="investment-row"
+            >
+              <div class="inv-info">
+                <span class="inv-code">{{ inv.code }}</span>
+                <span class="inv-name">{{ inv.name }}</span>
+                <span class="inv-total">投资计划 ¥{{ getFundTotal(inv).toLocaleString() }}</span>
+              </div>
+              <button class="inv-config-btn" @click="openSchedule(idx)">配置</button>
+              <button class="inv-remove" @click="removeInvestment(idx)" title="移除">×</button>
+            </div>
+          </div>
+          <button class="btn btn-primary add-investment-btn" :disabled="!favoriteFunds.length" @click="openAddSchedule">
+            添加新基金...
+          </button>
+        </div>
+        <div class="dialog-footer">
+          <span class="total-investment">总计：¥{{ grandTotal.toLocaleString() }}</span>
+          <button class="btn-done" @click="showAccountDialog = false">完成</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Schedule Dialog: calendar with daily amounts -->
+    <div v-if="showScheduleDialog" class="dialog-overlay" @click.self="showScheduleDialog = false">
+      <div class="dialog-panel schedule-dialog">
+        <div class="dialog-header">
+          <h3>{{ editingFund ? editingFund.name : '配置投资计划' }}</h3>
+          <button class="dialog-close" @click="closeSchedule">×</button>
+        </div>
+        <div class="dialog-body">
+          <div v-if="!editingFund" class="select-fund-area">
+            <select v-model="scheduleFundCode" class="fund-select">
+              <option value="" disabled>选择已收藏的基金...</option>
+              <option
+                v-for="f in favoriteFunds"
+                :key="f.id"
+                :value="f.id"
+              >
+                {{ f.id }} - {{ f.name }}
+              </option>
+            </select>
+            <button class="btn btn-primary" :disabled="!scheduleFundCode" @click="loadFundForSchedule">
+              下一步
+            </button>
+          </div>
+          <template v-else>
+            <div class="schedule-fund-bar">
+              <span class="schedule-fund-code">{{ editingFund.code }}</span>
+              <button class="btn btn-ghost" @click="fetchHistoryForSchedule">刷新数据</button>
+            </div>
+            <div v-if="scheduleHistoryLoading" class="loading-overlay">
+              <div class="loading-spinner"></div>
+            </div>
+            <template v-if="scheduleHistory.length">
+              <div class="calendar-toolbar">
+                <button class="cal-nav" @click="schedulePrevMonth">‹</button>
+                <h3>{{ scheduleCalendarDate.getFullYear() }}年{{ scheduleCalendarDate.getMonth() + 1 }}月</h3>
+                <button class="cal-nav" @click="scheduleNextMonth">›</button>
+              </div>
+              <table class="calendar-table">
+                <thead>
+                  <tr>
+                    <th v-for="d in weekDays" :key="d">{{ d }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(week, wi) in scheduleCalendarDays" :key="wi">
+                    <td
+                      v-for="(cell, ci) in week"
+                      :key="ci"
+                      :class="{ 'is-empty': cell.isEmpty }"
+                    >
+                      <div
+                        v-if="!cell.isEmpty"
+                        class="cal-cell"
+                        :class="getScheduleCellClass(cell.dateStr)"
+                        @click="openDayInput(cell.dateStr)"
+                      >
+                        <span class="cal-day-num">{{ cell.day }}</span>
+                        <span v-if="getDailyReturn(cell.dateStr) !== null" class="cal-return" :class="getReturnClass(getDailyReturn(cell.dateStr)!)">
+                          {{ getDailyReturn(cell.dateStr)!.toFixed(2) }}%
+                        </span>
+                        <span v-if="getDayAmount(cell.dateStr)" class="cal-amount">
+                          ¥{{ getDayAmount(cell.dateStr) }}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </template>
+            <div v-if="!scheduleHistory.length && !scheduleHistoryLoading" class="empty-state">
+              <p>暂无数据，请先获取历史数据</p>
+            </div>
+          </template>
+        </div>
+        <div class="dialog-footer">
+          <span class="total-investment" v-if="editingFund">
+            已配置：¥{{ getFundTotal(editingFund).toLocaleString() }}
+          </span>
+          <button class="btn-done" @click="closeSchedule">完成</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Day amount input popover -->
+    <div
+      v-if="showDayInput && editingFund"
+      class="day-input-overlay"
+      @click.self="showDayInput = false"
+    >
+      <div class="day-input-panel">
+        <div class="day-input-header">
+          <span class="day-input-date">{{ dayInputDate }}</span>
+          <span v-if="getDailyReturn(dayInputDate) !== null" class="day-input-return" :class="getReturnClass(getDailyReturn(dayInputDate)!)">
+            收益率: {{ getDailyReturn(dayInputDate)!.toFixed(2) }}%
+          </span>
+        </div>
+        <div class="day-input-body">
+          <label>投资金额（¥）</label>
+          <input
+            ref="dayInputRef"
+            type="number"
+            v-model="dayInputAmount"
+            class="day-input-field"
+            min="0"
+            step="100"
+            placeholder="输入金额"
+            @keydown.enter="confirmDayInput"
+            @keydown.escape="showDayInput = false"
+          />
+        </div>
+        <div class="day-input-footer">
+          <button class="btn" @click="showDayInput = false">取消</button>
+          <button class="btn-primary" @click="confirmDayInput">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Invest Detail Dialog -->
+    <div v-if="showInvestDetailDialog && investDetailFund" class="dialog-overlay" @click.self="showInvestDetailDialog = false">
+      <div class="dialog-panel invest-detail-dialog">
+        <div class="dialog-header">
+          <h3>{{ investDetailFund.code }} - {{ investDetailFund.name }}</h3>
+          <button class="dialog-close" @click="showInvestDetailDialog = false">×</button>
+        </div>
+        <div class="dialog-body">
+          <div v-if="detailHistoryLoading" class="loading-overlay">
+            <div class="loading-spinner"></div>
+          </div>
+          <template v-if="detailHistory.length">
+            <div class="calendar-toolbar">
+              <button class="cal-nav" @click="detailPrevMonth">‹</button>
+              <h3>{{ detailCalendarDate.getFullYear() }}年{{ detailCalendarDate.getMonth() + 1 }}月</h3>
+              <button class="cal-nav" @click="detailNextMonth">›</button>
+            </div>
+            <table class="calendar-table">
+              <thead>
+                <tr>
+                  <th v-for="d in weekDays" :key="d">{{ d }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(week, wi) in detailCalendarDays" :key="wi">
+                  <td v-for="(cell, ci) in week" :key="ci" :class="{ 'is-empty': cell.isEmpty }">
+                    <div v-if="!cell.isEmpty" class="cal-cell" :class="getDetailCellClass(cell.dateStr)">
+                      <span class="cal-day-num">{{ cell.day }}</span>
+                      <span v-if="getDetailReturn(cell.dateStr) !== null" class="cal-return" :class="getReturnClass(getDetailReturn(cell.dateStr)!)">
+                        {{ getDetailReturn(cell.dateStr)!.toFixed(2) }}%
+                      </span>
+                      <span v-if="getDetailAmount(cell.dateStr)" class="cal-amount">
+                        ¥{{ getDetailAmount(cell.dateStr) }}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="invest-detail-total">
+              合计：¥{{ investDetailTotal.toLocaleString() }}
+            </div>
+          </template>
+          <div v-else-if="!detailHistoryLoading" class="empty-state">
+            <p>暂无历史数据</p>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn-primary" @click="showInvestDetailDialog = false">关闭</button>
+        </div>
       </div>
     </div>
   </div>
@@ -281,6 +506,253 @@ const filteredFunds = computed(() => {
     (f) => f.id.toLowerCase().includes(q) || f.name.toLowerCase().includes(q),
   );
 });
+
+interface FundInvestment {
+  code: string;
+  name: string;
+  schedule: Record<string, number>;
+}
+
+const showAccountDialog = ref(false);
+
+const investments = ref<FundInvestment[]>([]);
+
+const favoriteFunds = computed(() => {
+  return funds.value.filter((f) => favorites.value.has(f.id));
+});
+
+const investedCodes = computed(() => new Set(investments.value.map((i) => i.code)));
+
+const grandTotal = computed(() =>
+  investments.value.reduce((sum, i) => sum + getFundTotal(i), 0),
+);
+
+function getFundTotal(inv: FundInvestment) {
+  return inv.schedule ? Object.values(inv.schedule).reduce((s, v) => s + v, 0) : 0;
+}
+
+async function loadAccount() {
+  try {
+    const data = await invoke<FundInvestment[]>("get_account");
+    investments.value = data.map((item: any) => ({
+      code: item.code,
+      name: item.name,
+      schedule: item.schedule || {},
+    }));
+  } catch (_e) {}
+}
+
+async function saveInvestments() {
+  try {
+    await invoke("save_account", { data: investments.value });
+  } catch (_e) {}
+}
+
+function openAccountDialog() {
+  showAccountDialog.value = true;
+}
+
+async function removeInvestment(idx: number) {
+  investments.value.splice(idx, 1);
+  await saveInvestments();
+}
+
+// ─── Schedule Dialog ───
+
+interface HistoryPoint {
+  timestamp: number;
+  value: number;
+}
+interface FundHistory {
+  fund_code: string;
+  fund_name: string;
+  data: HistoryPoint[];
+}
+
+const showScheduleDialog = ref(false);
+const scheduleFundCode = ref("");
+const editingIdx = ref(-1);
+const editingFund = ref<FundInvestment | null>(null);
+const scheduleHistory = ref<HistoryPoint[]>([]);
+const scheduleHistoryLoading = ref(false);
+const scheduleCalendarDate = ref(new Date());
+const weekDays = ["日", "一", "二", "三", "四", "五", "六"];
+
+const dailyReturnMap = computed(() => {
+  const sorted = [...scheduleHistory.value].sort((a, b) => a.timestamp - b.timestamp);
+  const map = new Map<string, number>();
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1].value;
+    const cur = sorted[i].value;
+    const dailyReturn = ((cur - prev) / (100 + prev)) * 100;
+    map.set(formatDate(sorted[i].timestamp), dailyReturn);
+  }
+  return map;
+});
+
+const dateTimestampMap = computed(() => {
+  const map = new Map<string, number>();
+  for (const point of scheduleHistory.value) {
+    map.set(formatDate(point.timestamp), point.timestamp);
+  }
+  return map;
+});
+
+function getDailyReturn(dateStr: string): number | null {
+  return dailyReturnMap.value.get(dateStr) ?? null;
+}
+function getReturnClass(ret: number) {
+  return ret >= 0 ? "up" : "down";
+}
+
+const scheduleCalendarDays = computed(() => {
+  const year = scheduleCalendarDate.value.getFullYear();
+  const month = scheduleCalendarDate.value.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDay = new Date(year, month, 1).getDay();
+  const weeks: Array<Array<{ day: number; dateStr: string; isEmpty: boolean }>> = [];
+  let week: Array<{ day: number; dateStr: string; isEmpty: boolean }> = [];
+  for (let i = 0; i < firstDay; i++) {
+    week.push({ day: 0, dateStr: "", isEmpty: true });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    week.push({ day: d, dateStr, isEmpty: false });
+    if (week.length === 7) {
+      weeks.push(week);
+      week = [];
+    }
+  }
+  if (week.length) {
+    while (week.length < 7) week.push({ day: 0, dateStr: "", isEmpty: true });
+    weeks.push(week);
+  }
+  return weeks;
+});
+
+function schedulePrevMonth() {
+  const d = new Date(scheduleCalendarDate.value);
+  d.setMonth(d.getMonth() - 1);
+  scheduleCalendarDate.value = d;
+}
+function scheduleNextMonth() {
+  const d = new Date(scheduleCalendarDate.value);
+  d.setMonth(d.getMonth() + 1);
+  scheduleCalendarDate.value = d;
+}
+
+function formatDate(ts: number) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function getScheduleCellClass(dateStr: string) {
+  const ret = getDailyReturn(dateStr);
+  if (ret === null) return "";
+  const hasAmount = getDayAmount(dateStr) > 0;
+  return `${ret >= 0 ? "positive" : "negative"}${hasAmount ? " has-amount" : ""}`;
+}
+
+function getDayAmount(dateStr: string): number {
+  const ts = dateTimestampMap.value.get(dateStr);
+  return ts && editingFund.value?.schedule[String(ts)] ? editingFund.value.schedule[String(ts)] : 0;
+}
+
+async function openAddSchedule() {
+  editingIdx.value = -1;
+  editingFund.value = null;
+  scheduleFundCode.value = "";
+  scheduleHistory.value = [];
+  scheduleCalendarDate.value = new Date();
+  showScheduleDialog.value = true;
+}
+
+async function openSchedule(idx: number) {
+  editingIdx.value = idx;
+  const src = investments.value[idx];
+  editingFund.value = { code: src.code, name: src.name, schedule: { ...(src.schedule || {}) } };
+  scheduleFundCode.value = "";
+  scheduleHistory.value = [];
+  scheduleCalendarDate.value = new Date();
+  showScheduleDialog.value = true;
+  await fetchHistoryForSchedule();
+}
+
+async function loadFundForSchedule() {
+  const code = scheduleFundCode.value;
+  if (!code) return;
+  const fund = funds.value.find((f) => f.id === code);
+  if (!fund) return;
+  editingIdx.value = investments.value.findIndex((i) => i.code === code);
+  editingFund.value = {
+    code: fund.id,
+    name: fund.name,
+    schedule: editingIdx.value >= 0 ? { ...(investments.value[editingIdx.value].schedule || {}) } : {},
+  };
+  scheduleHistory.value = [];
+  scheduleCalendarDate.value = new Date();
+  await fetchHistoryForSchedule();
+}
+
+async function fetchHistoryForSchedule() {
+  if (!editingFund.value) return;
+  scheduleHistoryLoading.value = true;
+  try {
+    const result = await invoke<FundHistory>("get_fund_history", {
+      fundCode: editingFund.value.code,
+      period: "1y",
+    });
+    console.log("历史数据:", result.data.length, "条");
+    scheduleHistory.value = result.data;
+  } catch (e) {
+    console.error(e);
+  } finally {
+    scheduleHistoryLoading.value = false;
+  }
+}
+
+async function closeSchedule() {
+  if (editingFund.value) {
+    const existing = investments.value.find((i) => i.code === editingFund.value!.code);
+    if (existing) {
+      existing.schedule = editingFund.value.schedule;
+    } else {
+      investments.value.push({ ...editingFund.value });
+    }
+    await saveInvestments();
+  }
+  showScheduleDialog.value = false;
+  editingFund.value = null;
+}
+
+// ─── Day Input Popover ───
+
+const showDayInput = ref(false);
+const dayInputDate = ref("");
+const dayInputAmount = ref(0);
+const dayInputRef = ref<HTMLInputElement>();
+
+function openDayInput(dateStr: string) {
+  const ts = dateTimestampMap.value.get(dateStr);
+  if (!ts) return;
+  dayInputDate.value = dateStr;
+  dayInputAmount.value = editingFund.value?.schedule[String(ts)] ?? 0;
+  showDayInput.value = true;
+  nextTick(() => dayInputRef.value?.focus());
+}
+
+async function confirmDayInput() {
+  if (!editingFund.value) return;
+  const ts = dateTimestampMap.value.get(dayInputDate.value);
+  if (!ts) return;
+  if (dayInputAmount.value > 0) {
+    editingFund.value.schedule[String(ts)] = dayInputAmount.value;
+  } else {
+    delete editingFund.value.schedule[String(ts)];
+  }
+  showDayInput.value = false;
+  await saveInvestments();
+}
 
 function hasHistory(code: string) {
   return cachedHistoryCodes.value.has(code);
@@ -375,6 +847,110 @@ async function loadFavorites() {
   } catch (_e) {}
 }
 
+const showInvestDetailDialog = ref(false);
+const investDetailFund = ref<FundInvestment | null>(null);
+const detailHistory = ref<HistoryPoint[]>([]);
+const detailHistoryLoading = ref(false);
+const detailCalendarDate = ref(new Date());
+
+const investDetailTotal = computed(() => {
+  if (!investDetailFund.value) return 0;
+  return Object.values(investDetailFund.value.schedule).reduce((s, v) => s + v, 0);
+});
+
+const detailReturnMap = computed(() => {
+  const sorted = [...detailHistory.value].sort((a, b) => a.timestamp - b.timestamp);
+  const map = new Map<string, number>();
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1].value;
+    const cur = sorted[i].value;
+    const dailyReturn = ((cur - prev) / (100 + prev)) * 100;
+    map.set(formatDate(sorted[i].timestamp), dailyReturn);
+  }
+  return map;
+});
+
+const detailDateTimestampMap = computed(() => {
+  const map = new Map<string, number>();
+  for (const point of detailHistory.value) {
+    map.set(formatDate(point.timestamp), point.timestamp);
+  }
+  return map;
+});
+
+const detailCalendarDays = computed(() => {
+  const year = detailCalendarDate.value.getFullYear();
+  const month = detailCalendarDate.value.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDay = new Date(year, month, 1).getDay();
+  const weeks: Array<Array<{ day: number; dateStr: string; isEmpty: boolean }>> = [];
+  let week: Array<{ day: number; dateStr: string; isEmpty: boolean }> = [];
+  for (let i = 0; i < firstDay; i++) {
+    week.push({ day: 0, dateStr: "", isEmpty: true });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    week.push({ day: d, dateStr, isEmpty: false });
+    if (week.length === 7) {
+      weeks.push(week);
+      week = [];
+    }
+  }
+  if (week.length) {
+    while (week.length < 7) week.push({ day: 0, dateStr: "", isEmpty: true });
+    weeks.push(week);
+  }
+  return weeks;
+});
+
+function getDetailReturn(dateStr: string): number | null {
+  return detailReturnMap.value.get(dateStr) ?? null;
+}
+
+function getDetailAmount(dateStr: string): number {
+  if (!investDetailFund.value) return 0;
+  const ts = detailDateTimestampMap.value.get(dateStr);
+  return ts ? (investDetailFund.value.schedule[String(ts)] ?? 0) : 0;
+}
+
+function getDetailCellClass(dateStr: string) {
+  const ret = getDetailReturn(dateStr);
+  if (ret === null) return "";
+  const hasAmount = getDetailAmount(dateStr) > 0;
+  return `${ret >= 0 ? "positive" : "negative"}${hasAmount ? " has-amount" : ""}`;
+}
+
+function detailPrevMonth() {
+  const d = new Date(detailCalendarDate.value);
+  d.setMonth(d.getMonth() - 1);
+  detailCalendarDate.value = d;
+}
+function detailNextMonth() {
+  const d = new Date(detailCalendarDate.value);
+  d.setMonth(d.getMonth() + 1);
+  detailCalendarDate.value = d;
+}
+
+async function showInvestDetail(code: string) {
+  const fund = investments.value.find((i) => i.code === code);
+  if (!fund) return;
+  investDetailFund.value = fund;
+  detailCalendarDate.value = new Date();
+  showInvestDetailDialog.value = true;
+  detailHistoryLoading.value = true;
+  try {
+    const result = await invoke<FundHistory>("get_fund_history", {
+      fundCode: fund.code,
+      period: "1y",
+    });
+    detailHistory.value = result.data;
+  } catch (e) {
+    console.error(e);
+  } finally {
+    detailHistoryLoading.value = false;
+  }
+}
+
 async function fetchAllFunds() {
   loading.value = true;
   progressText.value = "0/0";
@@ -453,6 +1029,7 @@ onMounted(async () => {
   if (cache) {
     funds.value = cache;
     loadFavorites();
+    await loadAccount();
     await nextTick();
     updateTableSize();
     return;
@@ -466,6 +1043,7 @@ onMounted(async () => {
   } catch (_e) {}
   loadCachedHistoryCodes();
   loadFavorites();
+  await loadAccount();
   await nextTick();
   updateTableSize();
 
@@ -671,6 +1249,27 @@ onBeforeUnmount(() => {
   background: transparent;
 }
 .btn-outline:hover:not(:disabled) {
+  background: var(--accent-gold-muted);
+}
+.btn-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  line-height: 1;
+  color: var(--accent-gold);
+  border: 1px solid var(--accent-gold);
+  background: transparent;
+}
+.btn-done:hover {
   background: var(--accent-gold-muted);
 }
 .btn-primary {
@@ -903,6 +1502,22 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
+/* Coin button */
+.coin-btn {
+  background: none;
+  border: none;
+  color: var(--accent-gold);
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  transition: transform 0.15s ease;
+}
+.coin-btn:hover {
+  transform: scale(1.15);
+}
+
 /* Status */
 .status-cell {
   display: inline-flex;
@@ -970,5 +1585,464 @@ onBeforeUnmount(() => {
   border-top-color: var(--accent-gold);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
+}
+
+/* ─── Account Button ─── */
+
+.brand-spacer {
+  flex: 1;
+}
+.account-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+.account-btn:hover {
+  color: var(--accent-gold);
+  border-color: var(--accent-gold);
+  background: var(--accent-gold-muted);
+}
+
+/* ─── Account Dialog ─── */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.15s ease;
+}
+.dialog-panel {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  animation: scaleIn 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+}
+.account-dialog {
+  width: 520px;
+}
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.dialog-header h3 {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.dialog-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  transition: color 0.15s ease;
+}
+.dialog-close:hover {
+  color: var(--text-primary);
+}
+.dialog-body {
+  padding: 14px 18px;
+  overflow-y: auto;
+  flex: 1;
+}
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+/* Investment list (Account Dialog) */
+.investment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.investment-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+}
+.inv-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.inv-code {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-gold);
+  flex-shrink: 0;
+}
+.inv-name {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inv-total {
+  font-family: var(--font-display);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.inv-config-btn {
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--accent-gold);
+  font-family: var(--font-body);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+.inv-config-btn:hover {
+  background: var(--accent-gold-muted);
+  border-color: var(--accent-gold);
+}
+.inv-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  transition: color 0.15s ease;
+}
+.inv-remove:hover {
+  color: #e74c3c;
+}
+.add-investment-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+/* Empty state */
+.empty-investments {
+  text-align: center;
+  padding: 24px 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* Total */
+.total-investment {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-gold);
+  margin-right: auto;
+}
+
+/* ─── Schedule Dialog ─── */
+
+.schedule-dialog {
+  width: 600px;
+}
+
+/* Fund select area */
+.select-fund-area {
+  display: flex;
+  gap: 8px;
+  padding: 8px 0;
+}
+.fund-select {
+  flex: 1;
+  height: 32px;
+  padding: 0 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+.fund-select:focus {
+  border-color: var(--accent-gold);
+}
+.fund-select option {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+/* Schedule fund bar */
+.schedule-fund-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.schedule-fund-code {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-gold);
+}
+
+/* Calendar toolbar */
+.calendar-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 4px 0 10px;
+}
+.calendar-toolbar h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  min-width: 110px;
+  text-align: center;
+}
+.cal-nav {
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+.cal-nav:hover {
+  color: var(--accent-gold);
+  border-color: var(--accent-gold);
+  background: var(--accent-gold-muted);
+}
+
+/* Calendar table */
+.calendar-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.calendar-table th {
+  padding: 5px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.calendar-table td {
+  border: 1px solid var(--border-subtle);
+  text-align: center;
+  vertical-align: top;
+  padding: 0;
+  height: 58px;
+}
+.calendar-table td.is-empty {
+  background: transparent;
+  border-color: transparent;
+}
+.cal-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-height: 56px;
+  padding: 3px 2px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  position: relative;
+}
+.cal-cell:hover {
+  background: var(--accent-gold-muted);
+}
+.cal-cell.positive {
+  background: rgba(231, 76, 76, 0.03);
+}
+.cal-cell.negative {
+  background: rgba(39, 174, 96, 0.03);
+}
+.cal-cell.positive:hover {
+  background: rgba(231, 76, 76, 0.08);
+}
+.cal-cell.negative:hover {
+  background: rgba(39, 174, 96, 0.08);
+}
+.cal-cell.has-amount {
+  outline: 2px solid var(--accent-gold);
+  outline-offset: -2px;
+  border-radius: 2px;
+}
+.cal-day-num {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  line-height: 1.3;
+}
+.cal-return {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+.cal-return.up {
+  color: var(--up-red);
+}
+.cal-return.down {
+  color: var(--down-green);
+}
+.cal-amount {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent-gold);
+  line-height: 1;
+  margin-top: 1px;
+}
+
+/* ─── Day Input Popover ─── */
+
+.day-input-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+.day-input-panel {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  width: 280px;
+  animation: scaleIn 0.12s ease;
+}
+.day-input-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.day-input-date {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.day-input-return {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+}
+.day-input-return.up {
+  color: var(--up-red);
+}
+.day-input-return.down {
+  color: var(--down-green);
+}
+.day-input-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.day-input-body label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.day-input-field {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 16px;
+  outline: none;
+  text-align: right;
+  transition: border-color 0.2s ease;
+  box-sizing: border-box;
+}
+.day-input-field:focus {
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 0 1px var(--accent-gold);
+}
+.day-input-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 14px 12px;
+}
+
+/* ─── Invest Detail Dialog ─── */
+
+.invest-detail-dialog {
+  width: 560px;
+}
+.invest-detail-total {
+  text-align: right;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent-gold);
+  padding: 8px 0 0;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes scaleIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }
 </style>

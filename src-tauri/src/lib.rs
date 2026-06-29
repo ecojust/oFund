@@ -3,11 +3,19 @@ mod fund_storage;
 mod workspace;
 
 use fund_crawler::{fetch_company_list, fetch_fund_list, CrawlProgress, FundItemWithCompany};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 use tauri_plugin_opener::OpenerExt;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct AccountItem {
+    code: String,
+    name: String,
+    schedule: HashMap<String, f64>,
+}
 
 pub struct AppState {
     pub opencode_child: Arc<Mutex<Option<tauri_plugin_shell::process::CommandChild>>>,
@@ -172,6 +180,19 @@ fn toggle_favorite(app: tauri::AppHandle, fund_code: String) -> Result<Vec<Strin
 }
 
 #[tauri::command]
+fn get_account(app: tauri::AppHandle) -> Result<Vec<AccountItem>, String> {
+    Ok(
+        fund_storage::load_json::<Vec<AccountItem>>(&app, "account.json")?
+            .unwrap_or_default(),
+    )
+}
+
+#[tauri::command]
+fn save_account(app: tauri::AppHandle, data: Vec<AccountItem>) -> Result<(), String> {
+    fund_storage::save_json(&app, "account.json", &data)
+}
+
+#[tauri::command]
 async fn get_fund_history(
     _app: tauri::AppHandle,
     fund_code: String,
@@ -202,6 +223,8 @@ pub fn run() {
             fetch_all_history,
             get_favorites,
             toggle_favorite,
+            get_account,
+            save_account,
             execute_opencode_serve,
             kill_existing_opencode_processes,
         ])
