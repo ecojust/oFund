@@ -1,65 +1,84 @@
 <template>
   <div class="detail">
     <div class="header">
-      <el-button text @click="goBack" class="back-btn">← 返回</el-button>
+      <button class="back-btn" @click="goBack">← 返回</button>
       <div class="fund-title">
         <span class="fund-code">{{ fundCode }}</span>
         <span v-if="fundName" class="fund-name">{{ fundName }}</span>
       </div>
-      <el-radio-group
+      <div v-if="fundCode" class="period-group">
+        <button
+          v-for="opt in periodOptions"
+          :key="opt.value"
+          class="period-btn"
+          :class="{ active: period === opt.value }"
+          @click="selectPeriod(opt.value)"
+        >
+          {{ opt.label }}
+        </button>
+      </div>
+      <button
         v-if="fundCode"
-        v-model="period"
-        size="small"
-        @change="fetchHistory"
-      >
-        <el-radio-button value="1m">1个月</el-radio-button>
-        <el-radio-button value="3m">3个月</el-radio-button>
-        <el-radio-button value="6m">6个月</el-radio-button>
-        <el-radio-button value="1y">1年</el-radio-button>
-        <el-radio-button value="all">成立以来</el-radio-button>
-      </el-radio-group>
-      <el-button
-        v-if="fundCode"
-        type="primary"
+        class="btn-primary"
+        :disabled="loading"
         @click="fetchHistory"
-        :loading="loading"
-        size="small"
       >
+        <span v-if="loading" class="spinner"></span>
         {{ history.length ? "刷新" : "获取数据" }}
-      </el-button>
+      </button>
     </div>
 
-    <div class="content" v-loading="loading">
+    <div class="content">
+      <div v-if="loading" class="loading-overlay">
+        <div class="loading-spinner"></div>
+      </div>
+
       <div v-if="history.length" class="chart-area">
         <div ref="chartRef" class="chart"></div>
       </div>
 
-      <div class="calendar-area" v-if="history.length">
-        <div class="calendar-header">
-          <h3>
-            {{ calendarDate.getFullYear() }}年{{
-              calendarDate.getMonth() + 1
-            }}月
-          </h3>
+      <div v-if="history.length" class="calendar-area">
+        <div class="calendar-toolbar">
+          <button class="cal-nav" @click="prevMonth">‹</button>
+          <h3>{{ calendarDate.getFullYear() }}年{{ calendarDate.getMonth() + 1 }}月</h3>
+          <button class="cal-nav" @click="nextMonth">›</button>
         </div>
-        <el-calendar v-model="calendarDate">
-          <template #date-cell="{ data }">
-            <div class="calendar-cell" :class="getCellClass(data.day)">
-              <span class="calendar-day">{{ data.day.split("-").pop() }}</span>
-              <span
-                v-if="getDailyReturn(data.day) !== null"
-                class="calendar-return"
-                :class="getReturnClass(getDailyReturn(data.day)!)"
+        <table class="calendar-table">
+          <thead>
+            <tr>
+              <th v-for="d in weekDays" :key="d">{{ d }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(week, wi) in calendarDays" :key="wi">
+              <td
+                v-for="(cell, ci) in week"
+                :key="ci"
+                :class="{ 'is-empty': cell.isEmpty, 'is-today': cell.dateStr === todayStr }"
               >
-                {{ getDailyReturn(data.day)!.toFixed(2) }}%
-              </span>
-            </div>
-          </template>
-        </el-calendar>
+                <div v-if="!cell.isEmpty" class="calendar-cell" :class="getCellClass(cell.dateStr)">
+                  <span class="cal-day-num">{{ cell.day }}</span>
+                  <span
+                    v-if="getDailyReturn(cell.dateStr) !== null"
+                    class="cal-return"
+                    :class="getReturnClass(getDailyReturn(cell.dateStr)!)"
+                  >
+                    {{ getDailyReturn(cell.dateStr)!.toFixed(2) }}%
+                  </span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       <div v-if="!history.length && !loading" class="empty">
-        <el-empty description="暂无数据，请点击上方按钮获取" />
+        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <path d="M9 3v18M15 3v18M3 9h18M3 15h18"/>
+        </svg>
+        <p>暂无数据</p>
+        <p class="empty-hint">请点击上方按钮获取</p>
       </div>
     </div>
   </div>
@@ -92,6 +111,16 @@ const loading = ref(false);
 const chartRef = ref<HTMLElement | null>(null);
 const calendarDate = ref(new Date());
 
+const periodOptions = [
+  { value: "1m", label: "1个月" },
+  { value: "3m", label: "3个月" },
+  { value: "6m", label: "6个月" },
+  { value: "1y", label: "1年" },
+  { value: "all", label: "成立以来" },
+];
+
+const weekDays = ["日", "一", "二", "三", "四", "五", "六"];
+
 const dailyReturnMap = computed(() => {
   const sorted = [...history.value].sort((a, b) => a.timestamp - b.timestamp);
   const map = new Map<string, number>();
@@ -103,6 +132,49 @@ const dailyReturnMap = computed(() => {
   }
   return map;
 });
+
+const todayStr = computed(() => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+});
+
+const calendarDays = computed(() => {
+  const year = calendarDate.value.getFullYear();
+  const month = calendarDate.value.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDay = new Date(year, month, 1).getDay();
+  const weeks: Array<Array<{ day: number; dateStr: string; isEmpty: boolean }>> = [];
+  let week: Array<{ day: number; dateStr: string; isEmpty: boolean }> = [];
+
+  for (let i = 0; i < firstDay; i++) {
+    week.push({ day: 0, dateStr: "", isEmpty: true });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    week.push({ day: d, dateStr, isEmpty: false });
+    if (week.length === 7) {
+      weeks.push(week);
+      week = [];
+    }
+  }
+  if (week.length) {
+    while (week.length < 7) week.push({ day: 0, dateStr: "", isEmpty: true });
+    weeks.push(week);
+  }
+  return weeks;
+});
+
+function prevMonth() {
+  const d = new Date(calendarDate.value);
+  d.setMonth(d.getMonth() - 1);
+  calendarDate.value = d;
+}
+
+function nextMonth() {
+  const d = new Date(calendarDate.value);
+  d.setMonth(d.getMonth() + 1);
+  calendarDate.value = d;
+}
 
 function goBack() {
   router.push("/");
@@ -125,6 +197,11 @@ function getCellClass(dateStr: string) {
 
 function getReturnClass(ret: number) {
   return ret >= 0 ? "up" : "down";
+}
+
+function selectPeriod(value: string) {
+  period.value = value;
+  fetchHistory();
 }
 
 async function fetchHistory() {
@@ -231,8 +308,20 @@ watch(
   border-bottom: 1px solid var(--border-subtle);
 }
 .back-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
   font-size: 13px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
   flex-shrink: 0;
+}
+.back-btn:hover {
+  color: var(--accent-gold);
+  background: var(--accent-gold-muted);
 }
 .fund-title {
   display: flex;
@@ -257,13 +346,119 @@ watch(
   white-space: nowrap;
 }
 
+/* ─── Period Group ─── */
+
+.period-group {
+  display: flex;
+  flex-shrink: 0;
+}
+.period-btn {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-left: -1px;
+}
+.period-btn:first-child {
+  margin-left: 0;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+.period-btn:last-child {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.period-btn:hover {
+  background: var(--accent-gold-muted);
+  color: var(--accent-gold);
+  border-color: var(--accent-gold);
+  z-index: 1;
+  position: relative;
+}
+.period-btn.active {
+  background: var(--accent-gold);
+  border-color: var(--accent-gold);
+  color: #0B0B0F;
+  z-index: 1;
+  position: relative;
+}
+
+/* ─── Primary Button ─── */
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  border: 1px solid var(--accent-gold);
+  background: var(--accent-gold);
+  color: #0B0B0F;
+  line-height: 1;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-gold-hover);
+  border-color: var(--accent-gold-hover);
+}
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ─── Spinner ─── */
+
+.spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ─── Content ─── */
 
-.detail .content {
+.content {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+}
+
+/* ─── Loading Overlay ─── */
+
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(11, 11, 15, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  backdrop-filter: blur(2px);
+}
+.loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--accent-gold-muted);
+  border-top-color: var(--accent-gold);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
 }
 
 /* ─── Chart ─── */
@@ -285,66 +480,128 @@ watch(
   overflow: auto;
   padding: 0 16px 12px;
 }
-.calendar-header {
+.calendar-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 0 4px;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 0 12px;
 }
-.calendar-header h3 {
+.calendar-toolbar h3 {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
   font-family: var(--font-display);
+  min-width: 110px;
+  text-align: center;
 }
-.calendar-area :deep(.el-calendar) {
-  --el-calendar-border: var(--border-subtle);
+.cal-nav {
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: all 0.15s ease;
 }
-.calendar-area :deep(.el-calendar-table td.is-selected) {
-  background-color: transparent;
+.cal-nav:hover {
+  color: var(--accent-gold);
+  border-color: var(--accent-gold);
+  background: var(--accent-gold-muted);
 }
-.calendar-area :deep(.el-calendar-table td.is-today) {
-  background-color: var(--accent-gold-muted);
+
+/* Calendar Table */
+.calendar-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
 }
-.calendar-area :deep(.el-calendar-day) {
-  height: auto;
-  padding: 4px;
-}
-.calendar-area :deep(.el-calendar-table thead th) {
+.calendar-table th {
   padding: 6px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.calendar-table td {
+  border: 1px solid var(--border-subtle);
+  text-align: center;
+  vertical-align: top;
+  padding: 0;
+  height: 62px;
+}
+.calendar-table td.is-empty {
+  background: transparent;
+  border-color: transparent;
+}
+.calendar-table td.is-today {
+  background: var(--accent-gold-muted);
 }
 .calendar-cell {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  min-height: 48px;
-  padding: 2px 0;
+  min-height: 60px;
+  padding: 4px 2px;
+  cursor: default;
 }
-.calendar-day {
+.calendar-cell.positive {
+  background: rgba(231, 76, 76, 0.04);
+}
+.calendar-cell.negative {
+  background: rgba(39, 174, 96, 0.04);
+}
+.cal-day-num {
   font-size: 11px;
   color: var(--text-muted);
   font-family: var(--font-display);
+  line-height: 1;
 }
-.calendar-return {
+.cal-return {
   font-family: var(--font-display);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: -0.01em;
+  line-height: 1;
+  word-break: keep-all;
 }
-.calendar-return.up {
+.cal-return.up {
   color: var(--up-red);
 }
-.calendar-return.down {
+.cal-return.down {
   color: var(--down-green);
 }
 
-/* ─── Empty ─── */
+/* ─── Empty State ─── */
 
 .empty {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+.empty-icon {
+  width: 40px;
+  height: 40px;
+  margin-bottom: 8px;
+  opacity: 0.4;
+}
+.empty p {
+  font-size: 13px;
+}
+.empty-hint {
+  font-size: 12px;
+  opacity: 0.7;
 }
 </style>

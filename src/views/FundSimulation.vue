@@ -1,28 +1,33 @@
 <template>
   <div class="simulation">
     <div class="header">
-      <el-button text @click="goBack" class="back-btn">← 返回</el-button>
+      <button class="back-btn" @click="goBack">← 返回</button>
       <div class="fund-title">
         <span class="fund-code">{{ fundCode }}</span>
         <span v-if="fundName" class="fund-name">{{ fundName }}</span>
       </div>
     </div>
 
-    <!-- Phase 1: Data Setup -->
+    <!-- Phase 1: Setup -->
     <template v-if="phase === 'setup'">
-      <div
-        class="setup"
-        v-loading="loading"
-        element-loading-text="获取数据中..."
-      >
+      <div class="setup">
+        <div v-if="loading" class="loading-overlay">
+          <div class="loading-spinner"></div>
+          <span class="loading-text">获取数据中...</span>
+        </div>
+
         <div class="setup-row">
-          <el-radio-group v-model="period" size="small">
-            <el-radio-button value="1m">1个月</el-radio-button>
-            <el-radio-button value="3m">3个月</el-radio-button>
-            <el-radio-button value="6m">6个月</el-radio-button>
-            <el-radio-button value="1y">1年</el-radio-button>
-            <el-radio-button value="all">全部</el-radio-button>
-          </el-radio-group>
+          <div class="period-group">
+            <button
+              v-for="opt in periodOptions"
+              :key="opt.value"
+              class="period-btn"
+              :class="{ active: period === opt.value }"
+              @click="period = opt.value"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
         </div>
 
         <div v-if="dailyChanges.length" class="range-section">
@@ -31,37 +36,32 @@
             <span class="range-info">{{ dailyChanges.length }} 个交易日</span>
           </div>
           <div class="date-pickers">
-            <el-date-picker
-              v-model="rangeStartDate"
+            <input
               type="date"
-              placeholder="开始日期"
-              size="small"
-              :disabled-date="(d: Date) => d < minDate || d > maxDate"
-              value-format="YYYY-MM-DD"
+              v-model="rangeStartDate"
+              :min="minDateStr"
+              :max="maxDateStr"
               class="date-picker"
             />
             <span class="range-sep">至</span>
-            <el-date-picker
-              v-model="rangeEndDate"
+            <input
               type="date"
-              placeholder="结束日期"
-              size="small"
-              :disabled-date="(d: Date) => d < minDate || d > maxDate"
-              value-format="YYYY-MM-DD"
+              v-model="rangeEndDate"
+              :min="minDateStr"
+              :max="maxDateStr"
               class="date-picker"
             />
           </div>
-          <div class="range-hint" v-if="rangeDayCount > 1">
+          <div v-if="rangeDayCount > 1" class="range-hint">
             共 <strong>{{ rangeDayCount }}</strong> 个交易日可供模拟
           </div>
-          <el-button
-            type="primary"
-            size="small"
+          <button
+            class="btn-primary"
             :disabled="rangeDayCount < 2"
             @click="startSimulation"
           >
             开始模拟
-          </el-button>
+          </button>
         </div>
       </div>
     </template>
@@ -91,48 +91,60 @@
           <div class="invest-section">
             <div class="invest-label">今日投资额</div>
             <div class="invest-presets">
-              <el-button
+              <button
                 v-for="amt in presets"
                 :key="amt"
-                size="small"
+                class="preset-btn"
                 :class="{ active: currentInvestment === amt }"
                 @click="currentInvestment = amt"
-                >{{
-                  amt === 0 ? "不投" : `¥${amt.toLocaleString()}`
-                }}</el-button
               >
+                {{
+                  amt === 0 ? "不投" : `¥${amt.toLocaleString()}`
+                }}
+              </button>
             </div>
             <div class="invest-controls">
-              <el-input-number
-                v-model="currentInvestment"
-                :min="0"
-                :step="100"
-                :precision="2"
-                size="small"
-                class="invest-input"
-                controls-position="right"
-              />
-              <el-button type="primary" size="small" @click="confirmDay"
-                >确认</el-button
-              >
-              <el-button size="small" :loading="aiLoading" @click="askAI"
-                >问问AI</el-button
-              >
+              <div class="number-input">
+                <input
+                  type="number"
+                  v-model.number="currentInvestment"
+                  min="0"
+                  step="100"
+                  class="number-field"
+                />
+                <div class="number-arrows">
+                  <button
+                    class="number-arrow up"
+                    @click="currentInvestment += 100"
+                    tabindex="-1"
+                  >▲</button>
+                  <button
+                    class="number-arrow down"
+                    @click="currentInvestment = Math.max(0, currentInvestment - 100)"
+                    tabindex="-1"
+                  >▼</button>
+                </div>
+              </div>
+              <button class="btn-primary" @click="confirmDay">确认</button>
+              <button class="btn-outline" :disabled="aiLoading" @click="askAI">
+                <span v-if="aiLoading" class="spinner"></span>
+                问问AI
+              </button>
             </div>
           </div>
 
           <div class="invest-actions">
-            <el-button
-              type="warning"
-              size="small"
-              :loading="aiAutoRunning"
+            <button
+              class="btn-outline ai-auto-btn"
+              :disabled="aiAutoRunning"
               @click="runAiAutoSimulation"
-              class="ai-auto-btn"
-              >AI 自动模拟</el-button
             >
+              <span v-if="aiAutoRunning" class="spinner"></span>
+              AI 自动模拟
+            </button>
           </div>
 
-          <div class="ai-reply" v-if="aiReason">
+          <div v-if="aiReason" class="ai-reply">
             <div class="ai-reply-reason">{{ aiReason }}</div>
             <div class="ai-reply-putin">
               建议投资 <strong>¥{{ formatMoney(aiPutin) }}</strong
@@ -140,16 +152,16 @@
             </div>
           </div>
 
-          <div class="ai-prompt" v-if="aiPrompt" @click="togglePrompt">
+          <div v-if="aiPrompt" class="ai-prompt" @click="togglePrompt">
             <span class="ai-prompt-toggle">{{
               promptExpanded ? "收起" : "查看发送给 AI 的 prompt"
             }}</span>
-            <div class="ai-prompt-text" v-show="promptExpanded">
+            <div v-show="promptExpanded" class="ai-prompt-text">
               {{ aiPrompt }}
             </div>
           </div>
 
-          <div class="position-bar" v-if="totalInvested > 0">
+          <div v-if="totalInvested > 0" class="position-bar">
             <span class="position-label">仓位</span>
             <div class="position-track">
               <div
@@ -203,61 +215,62 @@
       </div>
     </template>
 
-    <el-dialog
-      v-model="showCompleteDialog"
-      title="模拟结束"
-      width="420px"
-      :close-on-click-modal="false"
-      align-center
-    >
-      <div class="dialog-stats">
-        <div class="dialog-stat">
-          <span class="dialog-stat-label">模拟天数</span>
-          <span class="dialog-stat-value">{{ simDays.length }} 天</span>
+    <!-- Phase 3: Complete Dialog -->
+    <div v-if="showCompleteDialog" class="dialog-overlay">
+      <div class="dialog-panel">
+        <div class="dialog-header">
+          <h3>模拟结束</h3>
+          <button class="dialog-close" @click="showCompleteDialog = false">×</button>
         </div>
-        <div class="dialog-stat">
-          <span class="dialog-stat-label">总投资额</span>
-          <span class="dialog-stat-value mono"
-            >¥{{ formatMoney(totalBudget) }}</span
-          >
+        <div class="dialog-body">
+          <div class="dialog-stats">
+            <div class="dialog-stat">
+              <span class="dialog-stat-label">模拟天数</span>
+              <span class="dialog-stat-value">{{ simDays.length }} 天</span>
+            </div>
+            <div class="dialog-stat">
+              <span class="dialog-stat-label">总投资额</span>
+              <span class="dialog-stat-value mono"
+                >¥{{ formatMoney(totalBudget) }}</span
+              >
+            </div>
+            <div class="dialog-stat">
+              <span class="dialog-stat-label">累计投入</span>
+              <span class="dialog-stat-value mono"
+                >¥{{ formatMoney(totalInvested) }}</span
+              >
+            </div>
+            <div class="dialog-stat">
+              <span class="dialog-stat-label">累计盈亏</span>
+              <span
+                class="dialog-stat-value mono"
+                :class="cumulativePnl >= 0 ? 'up' : 'down'"
+              >
+                {{ cumulativePnl >= 0 ? "+" : "" }}¥{{ formatMoney(cumulativePnl) }}
+              </span>
+            </div>
+            <div class="dialog-stat">
+              <span class="dialog-stat-label">最终价值</span>
+              <span class="dialog-stat-value mono"
+                >¥{{ formatMoney(currentValue) }}</span
+              >
+            </div>
+            <div v-if="totalInvested > 0" class="dialog-stat">
+              <span class="dialog-stat-label">收益率</span>
+              <span
+                class="dialog-stat-value"
+                :class="cumulativePnl >= 0 ? 'up' : 'down'"
+              >
+                {{ ((cumulativePnl / totalInvested) * 100).toFixed(2) }}%
+              </span>
+            </div>
+          </div>
         </div>
-        <div class="dialog-stat">
-          <span class="dialog-stat-label">累计投入</span>
-          <span class="dialog-stat-value mono"
-            >¥{{ formatMoney(totalInvested) }}</span
-          >
-        </div>
-        <div class="dialog-stat">
-          <span class="dialog-stat-label">累计盈亏</span>
-          <span
-            class="dialog-stat-value mono"
-            :class="cumulativePnl >= 0 ? 'up' : 'down'"
-          >
-            {{ cumulativePnl >= 0 ? "+" : "" }}¥{{ formatMoney(cumulativePnl) }}
-          </span>
-        </div>
-        <div class="dialog-stat">
-          <span class="dialog-stat-label">最终价值</span>
-          <span class="dialog-stat-value mono"
-            >¥{{ formatMoney(currentValue) }}</span
-          >
-        </div>
-        <div class="dialog-stat" v-if="totalInvested > 0">
-          <span class="dialog-stat-label">收益率</span>
-          <span
-            class="dialog-stat-value"
-            :class="cumulativePnl >= 0 ? 'up' : 'down'"
-          >
-            {{ ((cumulativePnl / totalInvested) * 100).toFixed(2) }}%
-          </span>
+        <div class="dialog-footer">
+          <button class="btn-primary" @click="resetAll">重新开始</button>
         </div>
       </div>
-      <template #footer>
-        <el-button type="primary" size="small" @click="resetAll"
-          >重新开始</el-button
-        >
-      </template>
-    </el-dialog>
+    </div>
   </div>
 </template>
 
@@ -299,6 +312,14 @@ const historyData = ref<HistoryPoint[]>([]);
 const phase = ref<Phase>("setup");
 const showCompleteDialog = ref(false);
 
+const periodOptions = [
+  { value: "1m", label: "1个月" },
+  { value: "3m", label: "3个月" },
+  { value: "6m", label: "6个月" },
+  { value: "1y", label: "1年" },
+  { value: "all", label: "全部" },
+];
+
 function goBack() {
   router.push("/");
 }
@@ -338,6 +359,9 @@ const maxDate = computed(() => {
   if (!dailyChanges.value.length) return new Date();
   return parseDate(dailyChanges.value[dailyChanges.value.length - 1].date);
 });
+
+const minDateStr = computed(() => formatDate(minDate.value.getTime()));
+const maxDateStr = computed(() => formatDate(maxDate.value.getTime()));
 
 // ─── Range Selection ───
 
@@ -455,7 +479,6 @@ function buildChartOption() {
     },
   ];
 
-  // Add investment markPoints
   const markPoints: any[] = [];
   simDays.value.forEach((day) => {
     const pt = points.find((p) => formatDate(p.timestamp) === day.date);
@@ -587,7 +610,6 @@ async function fetchData() {
     });
     fundName.value = result.fund_name;
     historyData.value = result.data;
-    // auto-set range to full available
     if (dailyChanges.value.length) {
       rangeStartDate.value = dailyChanges.value[0].date;
       rangeEndDate.value =
@@ -655,7 +677,6 @@ function resetAll() {
   showCompleteDialog.value = false;
   simDays.value = [];
   currentStep.value = 0;
-  // reset chart
   chartInstance?.dispose();
   chartInstance = null;
 }
@@ -751,7 +772,6 @@ const aiAutoRunning = ref(false);
 
 async function runAiAutoSimulation() {
   aiAutoRunning.value = true;
-  // reset simulation back to day 1
   currentStep.value = 0;
   currentInvestment.value = 0;
   for (const d of simDays.value) {
@@ -764,7 +784,6 @@ async function runAiAutoSimulation() {
   chartInstance = null;
   nextTick(() => renderChart());
 
-  // restart opencode service to clear session history
   await OpencodeService.killAll();
   aiInitialized = false;
 
@@ -834,8 +853,20 @@ watch(
   border-bottom: 1px solid var(--border-subtle);
 }
 .back-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
   font-size: 13px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
   flex-shrink: 0;
+}
+.back-btn:hover {
+  color: var(--accent-gold);
+  background: var(--accent-gold-muted);
 }
 .fund-title {
   display: flex;
@@ -860,6 +891,113 @@ watch(
   white-space: nowrap;
 }
 
+/* ─── Shared button styles ─── */
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  border: 1px solid var(--accent-gold);
+  background: var(--accent-gold);
+  color: #0B0B0F;
+  line-height: 1;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-gold-hover);
+  border-color: var(--accent-gold-hover);
+}
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  border: 1px solid var(--accent-gold);
+  background: transparent;
+  color: var(--accent-gold);
+  line-height: 1;
+}
+.btn-outline:hover:not(:disabled) {
+  background: var(--accent-gold-muted);
+}
+.btn-outline:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── Period Group ─── */
+
+.period-group {
+  display: flex;
+}
+.period-btn {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-left: -1px;
+}
+.period-btn:first-child {
+  margin-left: 0;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+.period-btn:last-child {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.period-btn:hover {
+  background: var(--accent-gold-muted);
+  color: var(--accent-gold);
+  border-color: var(--accent-gold);
+  z-index: 1;
+  position: relative;
+}
+.period-btn.active {
+  background: var(--accent-gold);
+  border-color: var(--accent-gold);
+  color: #0B0B0F;
+  z-index: 1;
+  position: relative;
+}
+
 /* ─── Setup ─── */
 
 .setup {
@@ -870,6 +1008,7 @@ watch(
   justify-content: center;
   gap: 24px;
   padding: 40px 16px;
+  position: relative;
 }
 .setup-row {
   display: flex;
@@ -903,6 +1042,24 @@ watch(
 }
 .date-picker {
   width: 160px;
+  height: 28px;
+  padding: 0 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.2s ease;
+  color-scheme: dark;
+}
+.date-picker:focus {
+  border-color: var(--accent-gold);
+}
+.date-picker::-webkit-calendar-picker-indicator {
+  filter: invert(0.6);
+  cursor: pointer;
 }
 .range-sep {
   color: var(--text-muted);
@@ -915,6 +1072,35 @@ watch(
 .range-hint strong {
   color: var(--accent-gold);
   font-family: var(--font-display);
+}
+
+/* ─── Loading Overlay ─── */
+
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(11, 11, 15, 0.7);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  z-index: 10;
+  backdrop-filter: blur(2px);
+  border-radius: var(--radius-lg);
+}
+.loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--accent-gold-muted);
+  border-top-color: var(--accent-gold);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+.loading-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
 }
 
 /* ─── Simulation ─── */
@@ -1049,21 +1235,23 @@ watch(
   flex-wrap: wrap;
   gap: 6px;
 }
-.invest-presets .el-button {
+.preset-btn {
   font-family: var(--font-display);
   font-size: 12px;
   padding: 0 10px;
   height: 28px;
-  border-color: var(--border-default);
+  border: 1px solid var(--border-default);
   color: var(--text-secondary);
   background: transparent;
   border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
-.invest-presets .el-button:hover {
+.preset-btn:hover {
   border-color: var(--accent-gold);
   color: var(--accent-gold);
 }
-.invest-presets .el-button.active {
+.preset-btn.active {
   border-color: var(--accent-gold);
   background: var(--accent-gold-muted);
   color: var(--accent-gold);
@@ -1073,12 +1261,65 @@ watch(
   align-items: center;
   gap: 8px;
 }
-.invest-input {
+
+/* Number Input */
+.number-input {
+  display: flex;
+  height: 28px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-surface);
   flex: 1;
+  transition: border-color 0.2s ease;
 }
-.invest-input :deep(.el-input__inner) {
+.number-input:focus-within {
+  border-color: var(--accent-gold);
+}
+.number-field {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
   font-family: var(--font-display);
+  font-size: 12px;
+  padding: 0 8px;
   text-align: right;
+  outline: none;
+  -moz-appearance: textfield;
+}
+.number-field::-webkit-inner-spin-button,
+.number-field::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.number-arrows {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border-default);
+  flex-shrink: 0;
+}
+.number-arrow {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 7px;
+  padding: 0 7px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+.number-arrow:hover {
+  color: var(--accent-gold);
+  background: var(--accent-gold-muted);
+}
+.number-arrow.up {
+  border-bottom: 1px solid var(--border-default);
 }
 
 /* Summary */
@@ -1224,6 +1465,71 @@ watch(
 
 /* ─── Dialog ─── */
 
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.15s ease;
+}
+.dialog-panel {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  width: 420px;
+  max-width: 90vw;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  animation: scaleIn 0.15s ease;
+}
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.dialog-header h3 {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+.dialog-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color 0.15s ease;
+}
+.dialog-close:hover {
+  color: var(--text-primary);
+}
+.dialog-body {
+  padding: 20px;
+}
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes scaleIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
 .dialog-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1253,30 +1559,5 @@ watch(
 }
 .dialog-stat-value.down {
   color: var(--down-green);
-}
-
-:deep(.el-dialog) {
-  --el-dialog-bg-color: var(--bg-elevated);
-  --el-dialog-title-font-size: 16px;
-  --el-dialog-border-radius: var(--radius-md);
-  border: 1px solid var(--border-default);
-}
-:deep(.el-dialog__title) {
-  color: var(--text-primary);
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 16px;
-}
-:deep(.el-dialog__header) {
-  border-bottom: 1px solid var(--border-subtle);
-  padding: 16px 20px;
-  margin: 0;
-}
-:deep(.el-dialog__body) {
-  padding: 20px;
-}
-:deep(.el-dialog__footer) {
-  border-top: 1px solid var(--border-subtle);
-  padding: 12px 20px;
 }
 </style>
