@@ -98,9 +98,7 @@
                 :class="{ active: currentInvestment === amt }"
                 @click="currentInvestment = amt"
               >
-                {{
-                  amt === 0 ? "不投" : `¥${amt.toLocaleString()}`
-                }}
+                {{ amt === 0 ? "不投" : `¥${amt.toLocaleString()}` }}
               </button>
             </div>
             <div class="invest-controls">
@@ -117,12 +115,18 @@
                     class="number-arrow up"
                     @click="currentInvestment += 100"
                     tabindex="-1"
-                  >▲</button>
+                  >
+                    ▲
+                  </button>
                   <button
                     class="number-arrow down"
-                    @click="currentInvestment = Math.max(0, currentInvestment - 100)"
+                    @click="
+                      currentInvestment = Math.max(0, currentInvestment - 100)
+                    "
                     tabindex="-1"
-                  >▼</button>
+                  >
+                    ▼
+                  </button>
                 </div>
               </div>
               <button class="btn-primary" @click="confirmDay">确认</button>
@@ -220,7 +224,9 @@
       <div class="dialog-panel">
         <div class="dialog-header">
           <h3>模拟结束</h3>
-          <button class="dialog-close" @click="showCompleteDialog = false">×</button>
+          <button class="dialog-close" @click="showCompleteDialog = false">
+            ×
+          </button>
         </div>
         <div class="dialog-body">
           <div class="dialog-stats">
@@ -246,7 +252,9 @@
                 class="dialog-stat-value mono"
                 :class="cumulativePnl >= 0 ? 'up' : 'down'"
               >
-                {{ cumulativePnl >= 0 ? "+" : "" }}¥{{ formatMoney(cumulativePnl) }}
+                {{ cumulativePnl >= 0 ? "+" : "" }}¥{{
+                  formatMoney(cumulativePnl)
+                }}
               </span>
             </div>
             <div class="dialog-stat">
@@ -306,14 +314,14 @@ const router = useRouter();
 
 const fundCode = ref("");
 const fundName = ref("");
-const period = ref("3m");
+const period = ref("1m");
 const loading = ref(false);
 const historyData = ref<HistoryPoint[]>([]);
 const phase = ref<Phase>("setup");
 const showCompleteDialog = ref(false);
 
 const periodOptions = [
-  // { value: "1m", label: "1个月" },
+  { value: "1m", label: "1个月" },
   { value: "3m", label: "3个月" },
   { value: "6m", label: "6个月" },
   { value: "1y", label: "1年" },
@@ -908,7 +916,7 @@ watch(
   transition: all 0.2s ease;
   border: 1px solid var(--accent-gold);
   background: var(--accent-gold);
-  color: #0B0B0F;
+  color: #0b0b0f;
   line-height: 1;
 }
 .btn-primary:hover:not(:disabled) {
@@ -956,7 +964,9 @@ watch(
   flex-shrink: 0;
 }
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ─── Period Group ─── */
@@ -993,7 +1003,7 @@ watch(
 .period-btn.active {
   background: var(--accent-gold);
   border-color: var(--accent-gold);
-  color: #0B0B0F;
+  color: #0b0b0f;
   z-index: 1;
   position: relative;
 }
@@ -1522,12 +1532,22 @@ watch(
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 @keyframes scaleIn {
-  from { transform: scale(0.95); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .dialog-stats {
