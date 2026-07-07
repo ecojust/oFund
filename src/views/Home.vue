@@ -5,7 +5,16 @@
       <span class="tagline">基金策略分析工具</span>
       <div class="brand-spacer"></div>
       <button class="account-btn" @click="openAccountDialog" title="账户配置">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg
+          viewBox="0 0 24 24"
+          width="18"
+          height="18"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
           <circle cx="12" cy="8" r="4" />
           <path d="M4 20c0-4 3.5-7 8-7s8 3 8 7" />
         </svg>
@@ -45,24 +54,31 @@
           <div class="view-tabs">
             <button
               class="view-tab"
-              :class="{ active: !showFavoritesOnly }"
-              @click="showFavoritesOnly = false"
+              :class="{ active: viewMode === 'all' }"
+              @click="viewMode = 'all'"
             >
               全部
             </button>
             <button
               class="view-tab"
-              :class="{ active: showFavoritesOnly }"
-              @click="showFavoritesOnly = true"
+              :class="{ active: viewMode === 'favorites' }"
+              @click="viewMode = 'favorites'"
             >
               收藏
             </button>
+            <button
+              class="view-tab"
+              :class="{ active: viewMode === 'alert' }"
+              @click="switchToAlert"
+            >
+              预警
+            </button>
           </div>
-          <span v-if="showFavoritesOnly" class="filter-count"
+          <span v-if="viewMode === 'favorites'" class="filter-count"
             >{{ filteredFunds.length.toLocaleString() }} 只</span
           >
           <button
-            v-if="showFavoritesOnly"
+            v-if="viewMode === 'favorites'"
             class="btn btn-primary batch-btn"
             :disabled="batchAnalyzing"
             @click="startBatchAnalyze"
@@ -72,7 +88,7 @@
           </button>
         </div>
       </div>
-      <div class="toolbar-right" v-show="!showFavoritesOnly">
+      <div class="toolbar-right" v-show="viewMode == 'all'">
         <button class="btn btn-ghost" @click="openHistoryDir">历史缓存</button>
 
         <div class="btn-group">
@@ -127,6 +143,8 @@
           <div class="th col-name">基金名称</div>
           <div class="th col-company">基金公司</div>
           <div class="th col-action">操作</div>
+          <div class="th col-trend" v-show="viewMode === 'alert'">趋势</div>
+          <div class="th col-streak" v-show="viewMode === 'alert'">连涨</div>
           <div class="th col-status">已获取</div>
         </div>
       </div>
@@ -184,11 +202,55 @@
                     @click="showInvestDetail(row.id)"
                     title="投资明细"
                   >
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="14"
+                      height="14"
+                      fill="currentColor"
+                    >
                       <circle cx="12" cy="12" r="10" />
-                      <text x="12" y="16" text-anchor="middle" font-size="14" font-weight="bold" fill="#0b0b0f">¥</text>
+                      <text
+                        x="12"
+                        y="16"
+                        text-anchor="middle"
+                        font-size="14"
+                        font-weight="bold"
+                        fill="#0b0b0f"
+                      >
+                        ¥
+                      </text>
                     </svg>
                   </button>
+                </div>
+                <div class="td col-trend" v-show="viewMode === 'alert'">
+                  <svg
+                    v-if="alertData.has(row.id)"
+                    :viewBox="`0 0 80 20`"
+                    width="80"
+                    height="20"
+                    class="sparkline"
+                  >
+                    <polyline
+                      :points="
+                        sparklinePoints(alertData.get(row.id)!.trend, 80, 20)
+                      "
+                      fill="none"
+                      stroke="#22c55e"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </div>
+                <div class="td col-streak" v-show="viewMode === 'alert'">
+                  <span v-if="alertData.has(row.id)" class="streak-text">
+                    <span class="streak-days"
+                      >{{ alertData.get(row.id)!.up_days }}天</span
+                    >
+                    <span class="streak-gain"
+                      >+{{ alertData.get(row.id)!.up_gain.toFixed(2) }}%</span
+                    >
+                  </span>
                 </div>
                 <div class="td col-status">
                   <span class="status-cell">
@@ -215,13 +277,17 @@
             <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
           </svg>
           <p v-if="search">没有匹配的基金</p>
-          <p v-else-if="showFavoritesOnly">还没有收藏的基金</p>
+          <p v-else-if="viewMode === 'favorites'">还没有收藏的基金</p>
+          <p v-else-if="viewMode === 'alert'">暂无预警基金</p>
           <p v-else>暂无数据</p>
-          <p v-if="!search && !showFavoritesOnly" class="empty-hint">
+          <p v-if="!search && viewMode === 'all'" class="empty-hint">
             点击「更新基金列表」获取数据
           </p>
-          <p v-if="!search && showFavoritesOnly" class="empty-hint">
+          <p v-if="!search && viewMode === 'favorites'" class="empty-hint">
             点击基金行中的星标按钮收藏
+          </p>
+          <p v-if="!search && viewMode === 'alert'" class="empty-hint">
+            没有基金满足「最近3个工作日涨幅超过10%」条件
           </p>
         </div>
       </div>
@@ -232,11 +298,17 @@
     </div>
 
     <!-- Account Dialog: investment list -->
-    <div v-if="showAccountDialog" class="dialog-overlay" @click.self="showAccountDialog = false">
+    <div
+      v-if="showAccountDialog"
+      class="dialog-overlay"
+      @click.self="showAccountDialog = false"
+    >
       <div class="dialog-panel account-dialog">
         <div class="dialog-header">
           <h3>基金投资明细</h3>
-          <button class="dialog-close" @click="showAccountDialog = false">×</button>
+          <button class="dialog-close" @click="showAccountDialog = false">
+            ×
+          </button>
         </div>
         <div class="dialog-body">
           <div v-if="investments.length === 0" class="empty-investments">
@@ -251,50 +323,74 @@
               <div class="inv-info">
                 <span class="inv-code">{{ inv.code }}</span>
                 <span class="inv-name">{{ inv.name }}</span>
-                <span class="inv-total">投资计划 ¥{{ getFundTotal(inv).toLocaleString() }}</span>
+                <span class="inv-total"
+                  >投资计划 ¥{{ getFundTotal(inv).toLocaleString() }}</span
+                >
               </div>
-              <button class="inv-config-btn" @click="openSchedule(idx)">配置</button>
-              <button class="inv-remove" @click="removeInvestment(idx)" title="移除">×</button>
+              <button class="inv-config-btn" @click="openSchedule(idx)">
+                配置
+              </button>
+              <button
+                class="inv-remove"
+                @click="removeInvestment(idx)"
+                title="移除"
+              >
+                ×
+              </button>
             </div>
           </div>
-          <button class="btn btn-primary add-investment-btn" :disabled="!favoriteFunds.length" @click="openAddSchedule">
+          <button
+            class="btn btn-primary add-investment-btn"
+            :disabled="!favoriteFunds.length"
+            @click="openAddSchedule"
+          >
             添加新基金...
           </button>
         </div>
         <div class="dialog-footer">
-          <span class="total-investment">总计：¥{{ grandTotal.toLocaleString() }}</span>
-          <button class="btn-done" @click="showAccountDialog = false">完成</button>
+          <span class="total-investment"
+            >总计：¥{{ grandTotal.toLocaleString() }}</span
+          >
+          <button class="btn-done" @click="showAccountDialog = false">
+            完成
+          </button>
         </div>
       </div>
     </div>
 
     <!-- Schedule Dialog: calendar with daily amounts -->
-    <div v-if="showScheduleDialog" class="dialog-overlay" @click.self="showScheduleDialog = false">
+    <div
+      v-if="showScheduleDialog"
+      class="dialog-overlay"
+      @click.self="showScheduleDialog = false"
+    >
       <div class="dialog-panel schedule-dialog">
         <div class="dialog-header">
-          <h3>{{ editingFund ? editingFund.name : '配置投资计划' }}</h3>
+          <h3>{{ editingFund ? editingFund.name : "配置投资计划" }}</h3>
           <button class="dialog-close" @click="closeSchedule">×</button>
         </div>
         <div class="dialog-body">
           <div v-if="!editingFund" class="select-fund-area">
             <select v-model="scheduleFundCode" class="fund-select">
               <option value="" disabled>选择已收藏的基金...</option>
-              <option
-                v-for="f in favoriteFunds"
-                :key="f.id"
-                :value="f.id"
-              >
+              <option v-for="f in favoriteFunds" :key="f.id" :value="f.id">
                 {{ f.id }} - {{ f.name }}
               </option>
             </select>
-            <button class="btn btn-primary" :disabled="!scheduleFundCode" @click="loadFundForSchedule">
+            <button
+              class="btn btn-primary"
+              :disabled="!scheduleFundCode"
+              @click="loadFundForSchedule"
+            >
               下一步
             </button>
           </div>
           <template v-else>
             <div class="schedule-fund-bar">
               <span class="schedule-fund-code">{{ editingFund.code }}</span>
-              <button class="btn btn-ghost" @click="fetchHistoryForSchedule">刷新数据</button>
+              <button class="btn btn-ghost" @click="fetchHistoryForSchedule">
+                刷新数据
+              </button>
             </div>
             <div v-if="scheduleHistoryLoading" class="loading-overlay">
               <div class="loading-spinner"></div>
@@ -302,7 +398,11 @@
             <template v-if="scheduleHistory.length">
               <div class="calendar-toolbar">
                 <button class="cal-nav" @click="schedulePrevMonth">‹</button>
-                <h3>{{ scheduleCalendarDate.getFullYear() }}年{{ scheduleCalendarDate.getMonth() + 1 }}月</h3>
+                <h3>
+                  {{ scheduleCalendarDate.getFullYear() }}年{{
+                    scheduleCalendarDate.getMonth() + 1
+                  }}月
+                </h3>
                 <button class="cal-nav" @click="scheduleNextMonth">›</button>
               </div>
               <table class="calendar-table">
@@ -325,10 +425,17 @@
                         @click="openDayInput(cell.dateStr)"
                       >
                         <span class="cal-day-num">{{ cell.day }}</span>
-                        <span v-if="getDailyReturn(cell.dateStr) !== null" class="cal-return" :class="getReturnClass(getDailyReturn(cell.dateStr)!)">
+                        <span
+                          v-if="getDailyReturn(cell.dateStr) !== null"
+                          class="cal-return"
+                          :class="getReturnClass(getDailyReturn(cell.dateStr)!)"
+                        >
                           {{ getDailyReturn(cell.dateStr)!.toFixed(2) }}%
                         </span>
-                        <span v-if="getDayAmount(cell.dateStr)" class="cal-amount">
+                        <span
+                          v-if="getDayAmount(cell.dateStr)"
+                          class="cal-amount"
+                        >
                           ¥{{ getDayAmount(cell.dateStr) }}
                         </span>
                       </div>
@@ -337,7 +444,10 @@
                 </tbody>
               </table>
             </template>
-            <div v-if="!scheduleHistory.length && !scheduleHistoryLoading" class="empty-state">
+            <div
+              v-if="!scheduleHistory.length && !scheduleHistoryLoading"
+              class="empty-state"
+            >
               <p>暂无数据，请先获取历史数据</p>
             </div>
           </template>
@@ -360,7 +470,11 @@
       <div class="day-input-panel">
         <div class="day-input-header">
           <span class="day-input-date">{{ dayInputDate }}</span>
-          <span v-if="getDailyReturn(dayInputDate) !== null" class="day-input-return" :class="getReturnClass(getDailyReturn(dayInputDate)!)">
+          <span
+            v-if="getDailyReturn(dayInputDate) !== null"
+            class="day-input-return"
+            :class="getReturnClass(getDailyReturn(dayInputDate)!)"
+          >
             收益率: {{ getDailyReturn(dayInputDate)!.toFixed(2) }}%
           </span>
         </div>
@@ -386,11 +500,17 @@
     </div>
 
     <!-- Invest Detail Dialog -->
-    <div v-if="showInvestDetailDialog && investDetailFund" class="dialog-overlay" @click.self="showInvestDetailDialog = false">
+    <div
+      v-if="showInvestDetailDialog && investDetailFund"
+      class="dialog-overlay"
+      @click.self="showInvestDetailDialog = false"
+    >
       <div class="dialog-panel invest-detail-dialog">
         <div class="dialog-header">
           <h3>{{ investDetailFund.code }} - {{ investDetailFund.name }}</h3>
-          <button class="dialog-close" @click="showInvestDetailDialog = false">×</button>
+          <button class="dialog-close" @click="showInvestDetailDialog = false">
+            ×
+          </button>
         </div>
         <div class="dialog-body">
           <div v-if="detailHistoryLoading" class="loading-overlay">
@@ -399,7 +519,11 @@
           <template v-if="detailHistory.length">
             <div class="calendar-toolbar">
               <button class="cal-nav" @click="detailPrevMonth">‹</button>
-              <h3>{{ detailCalendarDate.getFullYear() }}年{{ detailCalendarDate.getMonth() + 1 }}月</h3>
+              <h3>
+                {{ detailCalendarDate.getFullYear() }}年{{
+                  detailCalendarDate.getMonth() + 1
+                }}月
+              </h3>
               <button class="cal-nav" @click="detailNextMonth">›</button>
             </div>
             <table class="calendar-table">
@@ -410,13 +534,28 @@
               </thead>
               <tbody>
                 <tr v-for="(week, wi) in detailCalendarDays" :key="wi">
-                  <td v-for="(cell, ci) in week" :key="ci" :class="{ 'is-empty': cell.isEmpty }">
-                    <div v-if="!cell.isEmpty" class="cal-cell" :class="getDetailCellClass(cell.dateStr)">
+                  <td
+                    v-for="(cell, ci) in week"
+                    :key="ci"
+                    :class="{ 'is-empty': cell.isEmpty }"
+                  >
+                    <div
+                      v-if="!cell.isEmpty"
+                      class="cal-cell"
+                      :class="getDetailCellClass(cell.dateStr)"
+                    >
                       <span class="cal-day-num">{{ cell.day }}</span>
-                      <span v-if="getDetailReturn(cell.dateStr) !== null" class="cal-return" :class="getReturnClass(getDetailReturn(cell.dateStr)!)">
+                      <span
+                        v-if="getDetailReturn(cell.dateStr) !== null"
+                        class="cal-return"
+                        :class="getReturnClass(getDetailReturn(cell.dateStr)!)"
+                      >
                         {{ getDetailReturn(cell.dateStr)!.toFixed(2) }}%
                       </span>
-                      <span v-if="getDetailAmount(cell.dateStr)" class="cal-amount">
+                      <span
+                        v-if="getDetailAmount(cell.dateStr)"
+                        class="cal-amount"
+                      >
                         ¥{{ getDetailAmount(cell.dateStr) }}
                       </span>
                     </div>
@@ -433,18 +572,28 @@
           </div>
         </div>
         <div class="dialog-footer">
-          <button class="btn-done" @click="computeSuggestion">明日投资建议</button>
-          <button class="btn-primary" @click="showInvestDetailDialog = false">关闭</button>
+          <button class="btn-done" @click="computeSuggestion">
+            明日投资建议
+          </button>
+          <button class="btn-primary" @click="showInvestDetailDialog = false">
+            关闭
+          </button>
         </div>
       </div>
     </div>
 
     <!-- Investment Suggestion Dialog -->
-    <div v-if="showSuggestDialog" class="dialog-overlay" @click.self="showSuggestDialog = false">
+    <div
+      v-if="showSuggestDialog"
+      class="dialog-overlay"
+      @click.self="showSuggestDialog = false"
+    >
       <div class="dialog-panel suggest-dialog">
         <div class="dialog-header">
           <h3>明日投资建议</h3>
-          <button class="dialog-close" @click="showSuggestDialog = false">×</button>
+          <button class="dialog-close" @click="showSuggestDialog = false">
+            ×
+          </button>
         </div>
         <div class="dialog-body">
           <div v-if="suggestLoading" class="suggest-prompt-area">
@@ -455,19 +604,31 @@
               <span>等待 AI 回复...</span>
             </div>
           </div>
-          <div v-else class="suggest-result" v-html="md.render(suggestResult)"></div>
+          <div
+            v-else
+            class="suggest-result"
+            v-html="md.render(suggestResult)"
+          ></div>
         </div>
         <div class="dialog-footer">
-          <button class="btn-done" @click="showSuggestDialog = false">关闭</button>
+          <button class="btn-done" @click="showSuggestDialog = false">
+            关闭
+          </button>
         </div>
       </div>
     </div>
     <!-- Batch Analysis Dialog -->
-    <div v-if="showBatchDialog" class="dialog-overlay" @click.self="showBatchDialog = false">
+    <div
+      v-if="showBatchDialog"
+      class="dialog-overlay"
+      @click.self="showBatchDialog = false"
+    >
       <div class="dialog-panel batch-dialog">
         <div class="dialog-header">
           <h3>一键分析明日推荐</h3>
-          <button class="dialog-close" @click="showBatchDialog = false">×</button>
+          <button class="dialog-close" @click="showBatchDialog = false">
+            ×
+          </button>
         </div>
         <div class="dialog-body">
           <div v-if="batchAnalyzing" class="batch-loading">
@@ -480,11 +641,16 @@
               <span class="batch-item-code">{{ item.code }}</span>
               <span class="batch-item-name">{{ item.name }}</span>
             </div>
-            <div class="batch-item-result" v-html="md.render(item.result)"></div>
+            <div
+              class="batch-item-result"
+              v-html="md.render(item.result)"
+            ></div>
           </div>
         </div>
         <div class="dialog-footer">
-          <button class="btn-done" @click="showBatchDialog = false">关闭</button>
+          <button class="btn-done" @click="showBatchDialog = false">
+            关闭
+          </button>
         </div>
       </div>
     </div>
@@ -506,6 +672,13 @@ interface FundItem {
   name: string;
   company_id: string;
   company_name: string;
+}
+
+interface AlertItem {
+  code: string;
+  trend: number[];
+  up_days: number;
+  up_gain: number;
 }
 
 interface CrawlProgress {
@@ -552,23 +725,45 @@ const periodOptions = [
   { value: "all", label: "全部" },
 ];
 const showPeriodMenu = ref(false);
-const showFavoritesOnly = ref(true);
+const viewMode = ref<"all" | "favorites" | "alert">("favorites");
 const search = ref("");
 
 const funds = ref<FundItem[]>([]);
 const cachedHistoryCodes = ref(new Set<string>());
+const alertData = ref(new Map<string, AlertItem>());
 const favorites = ref(new Set<string>());
+
+async function switchToAlert() {
+  viewMode.value = "alert";
+  try {
+    const items = await invoke<AlertItem[]>("get_alert_funds");
+    const map = new Map<string, AlertItem>();
+    for (const item of items) {
+      map.set(item.code, item);
+    }
+    alertData.value = map;
+  } catch (_e) {}
+}
 
 const filteredFunds = computed(() => {
   let list = funds.value;
-  if (showFavoritesOnly.value) {
+  if (viewMode.value === "favorites") {
     list = list.filter((f) => favorites.value.has(f.id));
+  } else if (viewMode.value === "alert") {
+    list = list.filter((f) => alertData.value.has(f.id));
   }
   const q = search.value.trim().toLowerCase();
-  if (!q) return list;
-  return list.filter(
-    (f) => f.id.toLowerCase().includes(q) || f.name.toLowerCase().includes(q),
-  );
+  if (q) {
+    list = list.filter(
+      (f) => f.id.toLowerCase().includes(q) || f.name.toLowerCase().includes(q),
+    );
+  }
+  return list.sort((a, b) => {
+    const aHas = cachedHistoryCodes.value.has(a.id);
+    const bHas = cachedHistoryCodes.value.has(b.id);
+    if (aHas === bHas) return 0;
+    return aHas ? 1 : -1;
+  });
 });
 
 interface FundInvestment {
@@ -585,14 +780,18 @@ const favoriteFunds = computed(() => {
   return funds.value.filter((f) => favorites.value.has(f.id));
 });
 
-const investedCodes = computed(() => new Set(investments.value.map((i) => i.code)));
+const investedCodes = computed(
+  () => new Set(investments.value.map((i) => i.code)),
+);
 
 const grandTotal = computed(() =>
   investments.value.reduce((sum, i) => sum + getFundTotal(i), 0),
 );
 
 function getFundTotal(inv: FundInvestment) {
-  return inv.schedule ? Object.values(inv.schedule).reduce((s, v) => s + v, 0) : 0;
+  return inv.schedule
+    ? Object.values(inv.schedule).reduce((s, v) => s + v, 0)
+    : 0;
 }
 
 async function loadAccount() {
@@ -643,7 +842,9 @@ const scheduleCalendarDate = ref(new Date());
 const weekDays = ["日", "一", "二", "三", "四", "五", "六"];
 
 const dailyReturnMap = computed(() => {
-  const sorted = [...scheduleHistory.value].sort((a, b) => a.timestamp - b.timestamp);
+  const sorted = [...scheduleHistory.value].sort(
+    (a, b) => a.timestamp - b.timestamp,
+  );
   const map = new Map<string, number>();
   for (let i = 1; i < sorted.length; i++) {
     const prev = sorted[i - 1].value;
@@ -674,7 +875,9 @@ const scheduleCalendarDays = computed(() => {
   const month = scheduleCalendarDate.value.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
-  const weeks: Array<Array<{ day: number; dateStr: string; isEmpty: boolean }>> = [];
+  const weeks: Array<
+    Array<{ day: number; dateStr: string; isEmpty: boolean }>
+  > = [];
   let week: Array<{ day: number; dateStr: string; isEmpty: boolean }> = [];
   for (let i = 0; i < firstDay; i++) {
     week.push({ day: 0, dateStr: "", isEmpty: true });
@@ -719,7 +922,9 @@ function getScheduleCellClass(dateStr: string) {
 
 function getDayAmount(dateStr: string): number {
   const ts = dateTimestampMap.value.get(dateStr);
-  return ts && editingFund.value?.schedule[String(ts)] ? editingFund.value.schedule[String(ts)] : 0;
+  return ts && editingFund.value?.schedule[String(ts)]
+    ? editingFund.value.schedule[String(ts)]
+    : 0;
 }
 
 async function openAddSchedule() {
@@ -734,7 +939,11 @@ async function openAddSchedule() {
 async function openSchedule(idx: number) {
   editingIdx.value = idx;
   const src = investments.value[idx];
-  editingFund.value = { code: src.code, name: src.name, schedule: { ...(src.schedule || {}) } };
+  editingFund.value = {
+    code: src.code,
+    name: src.name,
+    schedule: { ...(src.schedule || {}) },
+  };
   scheduleFundCode.value = "";
   scheduleHistory.value = [];
   scheduleCalendarDate.value = new Date();
@@ -751,7 +960,10 @@ async function loadFundForSchedule() {
   editingFund.value = {
     code: fund.id,
     name: fund.name,
-    schedule: editingIdx.value >= 0 ? { ...(investments.value[editingIdx.value].schedule || {}) } : {},
+    schedule:
+      editingIdx.value >= 0
+        ? { ...(investments.value[editingIdx.value].schedule || {}) }
+        : {},
   };
   scheduleHistory.value = [];
   scheduleCalendarDate.value = new Date();
@@ -777,7 +989,9 @@ async function fetchHistoryForSchedule() {
 
 async function closeSchedule() {
   if (editingFund.value) {
-    const existing = investments.value.find((i) => i.code === editingFund.value!.code);
+    const existing = investments.value.find(
+      (i) => i.code === editingFund.value!.code,
+    );
     if (existing) {
       existing.schedule = editingFund.value.schedule;
     } else {
@@ -824,6 +1038,20 @@ function hasHistory(code: string) {
 
 function isFavorite(code: string) {
   return favorites.value.has(code);
+}
+
+function sparklinePoints(trend: number[], w: number, h: number): string {
+  if (trend.length < 2) return "";
+  const min = Math.min(...trend);
+  const max = Math.max(...trend);
+  const range = max - min || 1;
+  return trend
+    .map((v, i) => {
+      const x = (i / (trend.length - 1)) * w;
+      const y = h - ((v - min) / range) * (h - 2) - 1;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
 }
 
 async function toggleFavorite(code: string) {
@@ -919,11 +1147,16 @@ const detailCalendarDate = ref(new Date());
 
 const investDetailTotal = computed(() => {
   if (!investDetailFund.value) return 0;
-  return Object.values(investDetailFund.value.schedule).reduce((s, v) => s + v, 0);
+  return Object.values(investDetailFund.value.schedule).reduce(
+    (s, v) => s + v,
+    0,
+  );
 });
 
 const detailReturnMap = computed(() => {
-  const sorted = [...detailHistory.value].sort((a, b) => a.timestamp - b.timestamp);
+  const sorted = [...detailHistory.value].sort(
+    (a, b) => a.timestamp - b.timestamp,
+  );
   const map = new Map<string, number>();
   for (let i = 1; i < sorted.length; i++) {
     const prev = sorted[i - 1].value;
@@ -947,7 +1180,9 @@ const detailCalendarDays = computed(() => {
   const month = detailCalendarDate.value.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
-  const weeks: Array<Array<{ day: number; dateStr: string; isEmpty: boolean }>> = [];
+  const weeks: Array<
+    Array<{ day: number; dateStr: string; isEmpty: boolean }>
+  > = [];
   let week: Array<{ day: number; dateStr: string; isEmpty: boolean }> = [];
   for (let i = 0; i < firstDay; i++) {
     week.push({ day: 0, dateStr: "", isEmpty: true });
@@ -1020,11 +1255,15 @@ async function showInvestDetail(code: string) {
 const batchAnalyzing = ref(false);
 const batchProgressText = ref("");
 const showBatchDialog = ref(false);
-const batchResults = ref<Array<{ code: string; name: string; result: string }>>([]);
+const batchResults = ref<Array<{ code: string; name: string; result: string }>>(
+  [],
+);
 const batchError = ref("");
 
 async function startBatchAnalyze() {
-  const targetFunds = funds.value.filter((f) => favorites.value.has(f.id) && investedCodes.value.has(f.id));
+  const targetFunds = funds.value.filter(
+    (f) => favorites.value.has(f.id) && investedCodes.value.has(f.id),
+  );
   if (!targetFunds.length) return;
 
   batchAnalyzing.value = true;
@@ -1050,7 +1289,11 @@ async function startBatchAnalyze() {
         });
         history = result.data;
       } catch {
-        batchResults.value.push({ code: fund.id, name: fund.name, result: "获取历史数据失败" });
+        batchResults.value.push({
+          code: fund.id,
+          name: fund.name,
+          result: "获取历史数据失败",
+        });
         continue;
       }
 
@@ -1060,13 +1303,20 @@ async function startBatchAnalyze() {
 
       const dailyReturns: string[] = [];
       for (let j = 1; j < recent.length; j++) {
-        const ret = ((recent[j].value - recent[j - 1].value) / (100 + recent[j - 1].value)) * 100;
-        dailyReturns.push(`${formatDate(recent[j].timestamp)} ${ret.toFixed(2)}%`);
+        const ret =
+          ((recent[j].value - recent[j - 1].value) /
+            (100 + recent[j - 1].value)) *
+          100;
+        dailyReturns.push(
+          `${formatDate(recent[j].timestamp)} ${ret.toFixed(2)}%`,
+        );
       }
 
       const inv = investments.value.find((i) => i.code === fund.id);
       const scheduleEntries = inv
-        ? Object.entries(inv.schedule).filter(([, v]) => v > 0).map(([ts, v]) => `${formatDate(Number(ts))} ¥${v}`)
+        ? Object.entries(inv.schedule)
+            .filter(([, v]) => v > 0)
+            .map(([ts, v]) => `${formatDate(Number(ts))} ¥${v}`)
         : [];
 
       let prompt = `你是一个量化投资顾问。以下是基金 ${fund.id}（${fund.name}）近3个月的每日涨跌幅数据：\n\n`;
@@ -1078,9 +1328,17 @@ async function startBatchAnalyze() {
 
       try {
         const reply = await OpencodeService.sendMessage(prompt);
-        batchResults.value.push({ code: fund.id, name: fund.name, result: reply || "无回复" });
+        batchResults.value.push({
+          code: fund.id,
+          name: fund.name,
+          result: reply || "无回复",
+        });
       } catch {
-        batchResults.value.push({ code: fund.id, name: fund.name, result: "AI 分析失败" });
+        batchResults.value.push({
+          code: fund.id,
+          name: fund.name,
+          result: "AI 分析失败",
+        });
       }
     }
   } catch (e) {
@@ -1100,13 +1358,17 @@ const suggestResult = ref("");
 async function computeSuggestion() {
   if (!investDetailFund.value || !detailHistory.value.length) return;
 
-  const sorted = [...detailHistory.value].sort((a, b) => a.timestamp - b.timestamp);
+  const sorted = [...detailHistory.value].sort(
+    (a, b) => a.timestamp - b.timestamp,
+  );
   const threeMonthsAgo = Date.now() - 90 * 24 * 60 * 60 * 1000;
   const recent = sorted.filter((p) => p.timestamp >= threeMonthsAgo);
 
   const dailyReturns: string[] = [];
   for (let i = 1; i < recent.length; i++) {
-    const ret = ((recent[i].value - recent[i - 1].value) / (100 + recent[i - 1].value)) * 100;
+    const ret =
+      ((recent[i].value - recent[i - 1].value) / (100 + recent[i - 1].value)) *
+      100;
     dailyReturns.push(`${formatDate(recent[i].timestamp)} ${ret.toFixed(2)}%`);
   }
 
@@ -1590,7 +1852,7 @@ onBeforeUnmount(() => {
 /* Row */
 .tr {
   display: grid;
-  grid-template-columns: 120px 1fr 200px 170px 72px;
+  grid-template-columns: 120px 1fr 200px 170px 90px 100px 72px;
   align-items: center;
   border-bottom: 1px solid var(--border-subtle);
   transition: background-color 0.15s ease;
@@ -1613,8 +1875,33 @@ onBeforeUnmount(() => {
   padding-left: 4px;
 }
 .col-action,
+.col-trend,
 .col-status {
   justify-content: center;
+}
+.col-trend {
+  padding: 0 4px;
+}
+.sparkline {
+  display: block;
+}
+.col-streak {
+  justify-content: center;
+}
+.streak-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.3;
+}
+.streak-days {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent-gold);
+}
+.streak-gain {
+  font-size: 11px;
+  color: #22c55e;
 }
 .col-status {
   padding-right: 4px;
@@ -2381,11 +2668,21 @@ onBeforeUnmount(() => {
 
 /* Animations */
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 @keyframes scaleIn {
-  from { transform: scale(0.95); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 </style>
