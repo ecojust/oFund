@@ -161,57 +161,99 @@ struct AlertFundInfo {
     trend: Vec<f64>,
     up_days: usize,
     up_gain: f64,
+    total_gain: f64,
+}
+
+#[derive(Clone, Serialize)]
+struct AlertProgress {
+    current: usize,
+    total: usize,
+    fund_code: String,
+    matched: usize,
 }
 
 #[tauri::command]
-fn get_alert_funds(app: tauri::AppHandle) -> Result<Vec<AlertFundInfo>, String> {
+fn get_alert_funds(
+    app: tauri::AppHandle,
+    days: Option<usize>,
+    threshold: Option<f64>,
+) -> Result<Vec<AlertFundInfo>, String> {
+    let days = days.unwrap_or(3).max(1);
+    let threshold = threshold.unwrap_or(10.0);
     let dir = fund_storage::storage_dir(&app)?.join("history");
     if !dir.exists() {
         return Ok(Vec::new());
     }
+    let entries: Vec<_> = std::fs::read_dir(&dir)
+        .map_err(|e| format!("读取目录失败: {}", e))?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("json"))
+        .collect();
+    let total = entries.len();
     let mut alert_funds = Vec::new();
-    for entry in std::fs::read_dir(&dir).map_err(|e| format!("读取目录失败: {}", e))? {
-        let entry = entry.map_err(|e| format!("读取条目失败: {}", e))?;
-        let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) != Some("json") {
-            continue;
-        }
+    for (idx, path) in entries.into_iter().enumerate() {
         let content = match std::fs::read_to_string(&path) {
             Ok(c) => c,
             Err(_) => continue,
         };
         let history: fund_crawler::FundHistory = match serde_json::from_str(&content) {
             Ok(h) => h,
-            Err(_) => continue,
+            Err(_) => {
+                let _ = app.emit(
+                    "alert-progress",
+                    AlertProgress {
+                        current: idx + 1,
+                        total,
+                        fund_code: String::new(),
+                        matched: alert_funds.len(),
+                    },
+                );
+                continue;
+            }
         };
-        if history.data.len() < 4 {
-            continue;
-        }
         let mut data = history.data;
         data.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
-        let last = data.last().unwrap();
-        let third_last = &data[data.len() - 4];
-        let return_3d = last.value - third_last.value;
-        if return_3d > 10.0 {
-            let trend: Vec<f64> = data.iter().rev().take(10).rev().map(|p| p.value).collect();
-            let mut up_days = 0usize;
-            let mut up_gain = 0.0f64;
-            for i in (1..data.len()).rev() {
-                let gain = data[i].value - data[i - 1].value;
-                if gain > 0.0 {
-                    up_days += 1;
-                    up_gain += gain;
-                } else {
-                    break;
-                }
+        if data.len() >= days + 1 {
+            let mut total_gain = 0.0f64;
+            for i in (data.len() - days)..data.len() {
+                total_gain += (data[i].value - data[i - 1].value)
+                    / (100.0 + data[i - 1].value)
+                    * 100.0;
             }
-            alert_funds.push(AlertFundInfo {
-                code: history.fund_code,
-                trend,
-                up_days,
-                up_gain,
-            });
+            if total_gain > threshold {
+                let trend: Vec<f64> =
+                    data.iter().rev().take(10).rev().map(|p| p.value).collect();
+                let mut up_days = 0usize;
+                let mut up_gain = 0.0f64;
+                for i in (1..data.len()).rev() {
+                    let gain = (data[i].value - data[i - 1].value)
+                        / (100.0 + data[i - 1].value)
+                        * 100.0;
+                    if gain > 0.0 {
+                        up_days += 1;
+                        up_gain += gain;
+                    } else {
+                        break;
+                    }
+                }
+                alert_funds.push(AlertFundInfo {
+                    code: history.fund_code.clone(),
+                    trend,
+                    up_days,
+                    up_gain,
+                    total_gain,
+                });
+            }
         }
+        let _ = app.emit(
+            "alert-progress",
+            AlertProgress {
+                current: idx + 1,
+                total,
+                fund_code: history.fund_code,
+                matched: alert_funds.len(),
+            },
+        );
     }
     Ok(alert_funds)
 }

@@ -86,6 +86,36 @@
             <span v-if="batchAnalyzing" class="spinner"></span>
             {{ batchAnalyzing ? batchProgressText : "一键分析明日推荐" }}
           </button>
+          <template v-if="viewMode === 'alert'">
+            <span class="alert-label">最近</span>
+            <input
+              v-model.number="alertDays"
+              type="number"
+              min="1"
+              class="alert-input"
+              @keyup.enter="runAlertFilter"
+            />
+            <span class="alert-label">个交易日，涨幅超</span>
+            <input
+              v-model.number="alertThreshold"
+              type="number"
+              step="0.1"
+              class="alert-input alert-input-sm"
+              @keyup.enter="runAlertFilter"
+            />
+            <span class="alert-label">%</span>
+            <button
+              class="btn btn-primary"
+              :disabled="alertLoading"
+              @click="runAlertFilter"
+            >
+              <span v-if="alertLoading" class="spinner"></span>
+              {{ alertLoading ? "筛选中..." : "筛选" }}
+            </button>
+            <span v-if="viewMode === 'alert' && alertProgressText" class="filter-count">{{
+              alertProgressText
+            }}</span>
+          </template>
         </div>
       </div>
       <div class="toolbar-right" v-show="viewMode == 'all'">
@@ -145,6 +175,7 @@
           <div class="th col-action">操作</div>
           <div class="th col-trend" v-show="viewMode === 'alert'">趋势</div>
           <div class="th col-streak" v-show="viewMode === 'alert'">连涨</div>
+          <div class="th col-total" v-show="viewMode === 'alert'">总涨幅</div>
           <div class="th col-status">已获取</div>
         </div>
       </div>
@@ -252,6 +283,11 @@
                     >
                   </span>
                 </div>
+                <div class="td col-total" v-show="viewMode === 'alert'">
+                  <span v-if="alertData.has(row.id)" class="total-gain">
+                    +{{ alertData.get(row.id)!.total_gain.toFixed(2) }}%
+                  </span>
+                </div>
                 <div class="td col-status">
                   <span class="status-cell">
                     <span
@@ -278,7 +314,8 @@
           </svg>
           <p v-if="search">没有匹配的基金</p>
           <p v-else-if="viewMode === 'favorites'">还没有收藏的基金</p>
-          <p v-else-if="viewMode === 'alert'">暂无预警基金</p>
+          <p v-else-if="viewMode === 'alert' && !alertData.size">请设置条件后点击「筛选」</p>
+          <p v-else-if="viewMode === 'alert'">没有基金满足条件</p>
           <p v-else>暂无数据</p>
           <p v-if="!search && viewMode === 'all'" class="empty-hint">
             点击「更新基金列表」获取数据
@@ -286,8 +323,13 @@
           <p v-if="!search && viewMode === 'favorites'" class="empty-hint">
             点击基金行中的星标按钮收藏
           </p>
-          <p v-if="!search && viewMode === 'alert'" class="empty-hint">
-            没有基金满足「最近3个工作日涨幅超过10%」条件
+          <p
+            v-if="!search && viewMode === 'alert' && alertData.size"
+            class="empty-hint"
+          >
+            没有基金满足「最近{{ alertDays }}个交易日涨幅超过{{
+              alertThreshold
+            }}%」条件
           </p>
         </div>
       </div>
@@ -679,6 +721,7 @@ interface AlertItem {
   trend: number[];
   up_days: number;
   up_gain: number;
+  total_gain: number;
 }
 
 interface CrawlProgress {
@@ -733,16 +776,52 @@ const cachedHistoryCodes = ref(new Set<string>());
 const alertData = ref(new Map<string, AlertItem>());
 const favorites = ref(new Set<string>());
 
+const alertDays = ref(3);
+const alertThreshold = ref(10);
+const alertLoading = ref(false);
+const alertProgressText = ref("");
+
 async function switchToAlert() {
   viewMode.value = "alert";
+  alertData.value = new Map();
+}
+
+async function runAlertFilter() {
+  viewMode.value = "alert";
+  alertLoading.value = true;
+  alertProgressText.value = "0/0";
+  let lastUpdate = 0;
+  const unlisten = await listen<{
+    current: number;
+    total: number;
+    fund_code: string;
+    matched: number;
+  }>("alert-progress", (event) => {
+    const now = Date.now();
+    if (now - lastUpdate < 200) return;
+    lastUpdate = now;
+    const p = event.payload;
+    const digits = String(p.total).length;
+    alertProgressText.value = `${String(p.current).padStart(digits, "0")}/${p.total}  命中 ${p.matched}`;
+  });
   try {
-    const items = await invoke<AlertItem[]>("get_alert_funds");
+    const items = await invoke<AlertItem[]>("get_alert_funds", {
+      days: alertDays.value,
+      threshold: alertThreshold.value,
+    });
     const map = new Map<string, AlertItem>();
     for (const item of items) {
       map.set(item.code, item);
     }
     alertData.value = map;
-  } catch (_e) {}
+    alertProgressText.value = `完成，命中 ${items.length} 只`;
+  } catch (_e) {
+    alertData.value = new Map();
+    alertProgressText.value = "筛选失败";
+  } finally {
+    unlisten();
+    alertLoading.value = false;
+  }
 }
 
 const filteredFunds = computed(() => {
@@ -1852,7 +1931,7 @@ onBeforeUnmount(() => {
 /* Row */
 .tr {
   display: grid;
-  grid-template-columns: 120px 1fr 200px 170px 90px 100px 72px;
+  grid-template-columns: 120px 1fr 200px 170px 90px 100px 90px 72px;
   align-items: center;
   border-bottom: 1px solid var(--border-subtle);
   transition: background-color 0.15s ease;
@@ -1876,6 +1955,8 @@ onBeforeUnmount(() => {
 }
 .col-action,
 .col-trend,
+.col-streak,
+.col-total,
 .col-status {
   justify-content: center;
 }
@@ -1903,8 +1984,42 @@ onBeforeUnmount(() => {
   font-size: 11px;
   color: #22c55e;
 }
+.col-total {
+  padding: 0 8px;
+}
+.total-gain {
+  font-size: 13px;
+  font-weight: 600;
+  color: #22c55e;
+}
 .col-status {
   padding-right: 4px;
+}
+
+/* Alert filter controls */
+.alert-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.alert-input {
+  width: 48px;
+  height: 26px;
+  padding: 0 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 13px;
+  text-align: center;
+  outline: none;
+}
+.alert-input-sm {
+  width: 56px;
+}
+.alert-input:focus {
+  border-color: var(--accent-gold);
 }
 
 /* Code */
