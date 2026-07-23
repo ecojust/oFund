@@ -169,13 +169,15 @@
     <div class="table-container" ref="tableContainerRef">
       <div class="table-header">
         <div class="tr">
-          <div class="th col-code">基金代码</div>
-          <div class="th col-name">基金名称</div>
-          <div class="th col-company">基金公司</div>
-          <div class="th col-action">操作</div>
+    <div class="th col-index">序号</div>
+    <div class="th col-code">基金代码</div>
+    <div class="th col-name">基金名称</div>
+    <div class="th col-category">所属分类</div>
+    <div class="th col-company">基金公司</div>
+    <div class="th col-action">操作</div>
           <div class="th col-trend" v-show="viewMode === 'alert'">趋势</div>
           <div class="th col-streak" v-show="viewMode === 'alert'">连涨</div>
-          <div class="th col-total" v-show="viewMode === 'alert'">总涨幅</div>
+          <div class="th col-total" v-show="viewMode === 'alert'">总涨幅({{ alertDays }}天)</div>
           <div class="th col-status">已获取</div>
         </div>
       </div>
@@ -188,16 +190,22 @@
               :style="{ transform: `translateY(${offsetY}px)` }"
             >
               <div
-                v-for="row in visibleRows"
+                v-for="(row, idx) in visibleRows"
                 :key="row.id"
                 class="tr"
                 :style="{ height: ROW_HEIGHT + 'px' }"
               >
+                <div class="td col-index">
+                  <span class="index-text">{{ startIndex + idx + 1 }}</span>
+                </div>
                 <div class="td col-code">
                   <span class="code-text">{{ row.id }}</span>
                 </div>
                 <div class="td col-name" :title="row.name">
                   <span class="name-text">{{ row.name }}</span>
+                </div>
+                <div class="td col-category">
+                  <span class="category-text">{{ row.category || "-" }}</span>
                 </div>
                 <div class="td col-company">
                   <span class="company-text">{{ row.company_name }}</span>
@@ -696,13 +704,109 @@
         </div>
       </div>
     </div>
+    <!-- History Dialog -->
+    <div
+      v-if="showHistoryDialog"
+      class="dialog-overlay"
+      @click.self="closeHistoryDialog"
+    >
+      <div class="dialog-panel history-dialog">
+        <div class="dialog-header">
+          <div class="history-title">
+            <h3>{{ historyFundCode }}</h3>
+            <span v-if="historyFundName" class="history-fund-name">{{ historyFundName }}</span>
+          </div>
+          <div class="history-nav">
+            <button class="h-nav-btn" :disabled="!historyHasPrev" @click="historyPrev" title="上一个">‹</button>
+            <span class="h-nav-count">{{ historyNavIndex + 1 }} / {{ filteredFunds.length }}</span>
+            <button class="h-nav-btn" :disabled="!historyHasNext" @click="historyNext" title="下一个">›</button>
+          </div>
+          <button class="dialog-close" @click="closeHistoryDialog">×</button>
+        </div>
+        <div class="history-toolbar">
+          <div v-if="historyFundCode" class="history-period-group">
+            <button
+              v-for="opt in historyPeriodOptions"
+              :key="opt.value"
+              class="h-period-btn"
+              :class="{ active: historyPeriod === opt.value }"
+              @click="selectHistoryPeriod(opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+          <button class="h-refresh-btn" :disabled="historyDialogLoading" @click="fetchFundHistory">
+            <span v-if="historyDialogLoading" class="spinner"></span>
+            {{ historyData.length ? "刷新" : "获取数据" }}
+          </button>
+        </div>
+        <div class="dialog-body">
+          <div v-if="historyDialogLoading" class="history-loading-overlay">
+            <div class="loading-spinner"></div>
+          </div>
+          <template v-if="historyData.length">
+            <div ref="historyChartRef" class="history-chart"></div>
+            <div class="calendar-area">
+              <div class="calendar-toolbar">
+                <button class="cal-nav" @click="historyPrevMonth">‹</button>
+                <h3>{{ historyCalendarDate.getFullYear() }}年{{ historyCalendarDate.getMonth() + 1 }}月</h3>
+                <button class="cal-nav" @click="historyNextMonth">›</button>
+              </div>
+              <table class="calendar-table">
+                <thead>
+                  <tr>
+                    <th v-for="d in weekDays" :key="d">{{ d }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(week, wi) in historyCalendarDays" :key="wi">
+                    <td
+                      v-for="(cell, ci) in week"
+                      :key="ci"
+                      :class="{ 'is-empty': cell.isEmpty }"
+                    >
+                      <div
+                        v-if="!cell.isEmpty"
+                        class="calendar-cell"
+                        :class="getHistoryCellClass(cell.dateStr)"
+                      >
+                        <span class="cal-day-num">{{ cell.day }}</span>
+                        <span
+                          v-if="getHistoryReturn(cell.dateStr) !== null"
+                          class="cal-return"
+                          :class="getReturnClass(getHistoryReturn(cell.dateStr)!)"
+                        >
+                          {{ getHistoryReturn(cell.dateStr)!.toFixed(2) }}%
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </template>
+          <div v-else-if="!historyDialogLoading" class="empty">
+            <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <path d="M9 3v18M15 3v18M3 9h18M3 15h18"/>
+            </svg>
+            <p>暂无数据</p>
+            <p class="empty-hint">请点击上方按钮获取</p>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn-done" @click="closeHistoryDialog">关闭</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue";
 import { useRouter } from "vue-router";
 import { invoke } from "@tauri-apps/api/core";
+import * as echarts from "echarts";
 import { listen } from "@tauri-apps/api/event";
 import OpencodeService from "../service/opencode";
 import MarkdownIt from "markdown-it";
@@ -714,6 +818,7 @@ interface FundItem {
   name: string;
   company_id: string;
   company_name: string;
+  category: string;
 }
 
 interface AlertItem {
@@ -834,15 +939,27 @@ const filteredFunds = computed(() => {
   const q = search.value.trim().toLowerCase();
   if (q) {
     list = list.filter(
-      (f) => f.id.toLowerCase().includes(q) || f.name.toLowerCase().includes(q),
+      (f) =>
+        f.id.toLowerCase().includes(q) ||
+        f.name.toLowerCase().includes(q) ||
+        f.category.toLowerCase().includes(q),
     );
   }
-  return list.sort((a, b) => {
-    const aHas = cachedHistoryCodes.value.has(a.id);
-    const bHas = cachedHistoryCodes.value.has(b.id);
-    if (aHas === bHas) return 0;
-    return aHas ? 1 : -1;
-  });
+  if (viewMode.value === "alert") {
+    list = [...list].sort((a, b) => {
+      const aGain = alertData.value.get(a.id)?.total_gain ?? 0;
+      const bGain = alertData.value.get(b.id)?.total_gain ?? 0;
+      return bGain - aGain;
+    });
+  } else {
+    list = [...list].sort((a, b) => {
+      const aHas = cachedHistoryCodes.value.has(a.id);
+      const bHas = cachedHistoryCodes.value.has(b.id);
+      if (aHas === bHas) return 0;
+      return aHas ? 1 : -1;
+    });
+  }
+  return list;
 });
 
 interface FundInvestment {
@@ -1544,8 +1661,197 @@ async function openHistoryDir() {
   } catch (_e) {}
 }
 
+// ─── History Dialog ───
+
+const showHistoryDialog = ref(false);
+const historyFundCode = ref("");
+const historyFundName = ref("");
+const historyPeriod = ref("3m");
+const historyData = ref<HistoryPoint[]>([]);
+const historyDialogLoading = ref(false);
+const historyCalendarDate = ref(new Date());
+const historyChartRef = ref<HTMLElement | null>(null);
+
+const historyPeriodOptions = [
+  { value: "3m", label: "3个月" },
+  { value: "6m", label: "6个月" },
+  { value: "1y", label: "1年" },
+  { value: "all", label: "成立以来" },
+];
+
+const historyReturnMap = computed(() => {
+  const sorted = [...historyData.value].sort((a, b) => a.timestamp - b.timestamp);
+  const map = new Map<string, number>();
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1].value;
+    const cur = sorted[i].value;
+    const dailyReturn = ((cur - prev) / (100 + prev)) * 100;
+    map.set(formatDate(sorted[i].timestamp), dailyReturn);
+  }
+  return map;
+});
+
+const historyCalendarDays = computed(() => {
+  const year = historyCalendarDate.value.getFullYear();
+  const month = historyCalendarDate.value.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDay = new Date(year, month, 1).getDay();
+  const weeks: Array<Array<{ day: number; dateStr: string; isEmpty: boolean }>> = [];
+  let week: Array<{ day: number; dateStr: string; isEmpty: boolean }> = [];
+  for (let i = 0; i < firstDay; i++) {
+    week.push({ day: 0, dateStr: "", isEmpty: true });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    week.push({ day: d, dateStr, isEmpty: false });
+    if (week.length === 7) {
+      weeks.push(week);
+      week = [];
+    }
+  }
+  if (week.length) {
+    while (week.length < 7) week.push({ day: 0, dateStr: "", isEmpty: true });
+    weeks.push(week);
+  }
+  return weeks;
+});
+
+function getHistoryReturn(dateStr: string): number | null {
+  return historyReturnMap.value.get(dateStr) ?? null;
+}
+
+function getHistoryCellClass(dateStr: string) {
+  const ret = getHistoryReturn(dateStr);
+  if (ret === null) return "";
+  return ret >= 0 ? "positive" : "negative";
+}
+
+function historyPrevMonth() {
+  const d = new Date(historyCalendarDate.value);
+  d.setMonth(d.getMonth() - 1);
+  historyCalendarDate.value = d;
+}
+function historyNextMonth() {
+  const d = new Date(historyCalendarDate.value);
+  d.setMonth(d.getMonth() + 1);
+  historyCalendarDate.value = d;
+}
+
+function selectHistoryPeriod(value: string) {
+  historyPeriod.value = value;
+  fetchFundHistory();
+}
+
+function closeHistoryDialog() {
+  showHistoryDialog.value = false;
+}
+
+function renderHistoryChart() {
+  if (!historyChartRef.value || !historyData.value.length) return;
+  const chart = echarts.init(historyChartRef.value);
+  const sorted = [...historyData.value].sort((a, b) => a.timestamp - b.timestamp);
+  chart.setOption({
+    backgroundColor: "transparent",
+    grid: { left: 60, right: 20, top: 30, bottom: 40 },
+    tooltip: {
+      trigger: "axis",
+      formatter: (params: any) => {
+        const p = params[0];
+        return `${formatDate(p.data[0])}<br/>累计收益率: ${p.data[1].toFixed(2)}%`;
+      },
+    },
+    xAxis: {
+      type: "time",
+      axisLabel: { color: "#a0aec0", fontSize: 11 },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: "value",
+      axisLabel: {
+        color: "#a0aec0",
+        fontSize: 11,
+        formatter: (v: number) => v.toFixed(1) + "%",
+      },
+      splitLine: { lineStyle: { color: "rgba(255,255,255,0.06)" } },
+    },
+    series: [
+      {
+        type: "line",
+        data: sorted.map((p) => [p.timestamp, p.value]),
+        smooth: true,
+        showSymbol: false,
+        lineStyle: { width: 2, color: "#D4A84B" },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: "rgba(212,168,75,0.25)" },
+            { offset: 1, color: "rgba(212,168,75,0.01)" },
+          ]),
+        },
+      },
+    ],
+  });
+  chart.resize();
+}
+
+async function fetchFundHistory() {
+  historyDialogLoading.value = true;
+  try {
+    const result = await invoke<FundHistory>("get_fund_history", {
+      fundCode: historyFundCode.value,
+      period: historyPeriod.value,
+    });
+    historyData.value = result.data;
+    if (result.fund_name) historyFundName.value = result.fund_name;
+    await nextTick();
+    renderHistoryChart();
+  } catch (e) {
+    console.error(e);
+  } finally {
+    historyDialogLoading.value = false;
+  }
+}
+
+watch(showHistoryDialog, async (val) => {
+  if (val) {
+    await nextTick();
+    renderHistoryChart();
+  }
+});
+
+const historyNavIndex = computed(() =>
+  filteredFunds.value.findIndex((f) => f.id === historyFundCode.value),
+);
+const historyHasPrev = computed(() => historyNavIndex.value > 0);
+const historyHasNext = computed(
+  () => historyNavIndex.value < filteredFunds.value.length - 1,
+);
+
+function navigateToFund(code: string) {
+  const fund = funds.value.find((f) => f.id === code);
+  historyFundCode.value = code;
+  historyFundName.value = fund?.name ?? "";
+  historyPeriod.value = "3m";
+  historyCalendarDate.value = new Date();
+  fetchFundHistory();
+}
+
+function historyPrev() {
+  if (!historyHasPrev.value) return;
+  navigateToFund(filteredFunds.value[historyNavIndex.value - 1].id);
+}
+function historyNext() {
+  if (!historyHasNext.value) return;
+  navigateToFund(filteredFunds.value[historyNavIndex.value + 1].id);
+}
+
 function viewHistory(fundCode: string) {
-  router.push(`/fund/${fundCode}`);
+  const fund = funds.value.find((f) => f.id === fundCode);
+  historyFundCode.value = fundCode;
+  historyFundName.value = fund?.name ?? "";
+  historyPeriod.value = "3m";
+  historyCalendarDate.value = new Date();
+  showHistoryDialog.value = true;
+  fetchFundHistory();
 }
 function viewSimulation(fundCode: string) {
   router.push(`/simulation/${fundCode}`);
@@ -1931,7 +2237,7 @@ onBeforeUnmount(() => {
 /* Row */
 .tr {
   display: grid;
-  grid-template-columns: 120px 1fr 200px 170px 90px 100px 90px 72px;
+  grid-template-columns: 50px 120px 1fr 110px 150px 120px 90px 80px 80px 72px;
   align-items: center;
   border-bottom: 1px solid var(--border-subtle);
   transition: background-color 0.15s ease;
@@ -1952,6 +2258,23 @@ onBeforeUnmount(() => {
 
 .col-code {
   padding-left: 4px;
+}
+.col-index {
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.col-category {
+  justify-content: center;
+  padding: 0 6px;
+}
+.category-text {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .col-action,
 .col-trend,
@@ -1994,6 +2317,14 @@ onBeforeUnmount(() => {
 }
 .col-status {
   padding-right: 4px;
+  overflow: visible;
+}
+.code-text,
+.name-text,
+.company-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Alert filter controls */
@@ -2779,6 +3110,281 @@ onBeforeUnmount(() => {
 }
 .batch-item-result :deep(strong) {
   color: var(--accent-gold);
+}
+
+/* ─── History Dialog ─── */
+
+.history-dialog {
+  width: 740px;
+  max-height: 85vh;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.history-dialog .dialog-header {
+  padding: 16px 20px 0;
+  border-bottom: none;
+}
+.history-dialog .dialog-header h3 {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--accent-gold);
+  letter-spacing: 0.03em;
+}
+.history-dialog .dialog-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.history-dialog .dialog-close:hover {
+  background: rgba(255,255,255,0.06);
+  color: var(--text-primary);
+}
+.history-dialog .dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.history-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.history-title h3 {
+  flex-shrink: 0;
+}
+.history-fund-name {
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.h-nav-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.h-nav-btn:hover:not(:disabled) {
+  border-color: var(--accent-gold);
+  color: var(--accent-gold);
+  background: var(--accent-gold-muted);
+}
+.h-nav-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+.h-nav-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  min-width: 48px;
+  text-align: center;
+}
+.history-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.history-period-group {
+  display: flex;
+}
+.h-period-btn {
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  margin-left: -1px;
+}
+.h-period-btn:first-child {
+  margin-left: 0;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+.h-period-btn:last-child {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.h-period-btn:hover {
+  background: var(--accent-gold-muted);
+  color: var(--accent-gold);
+  border-color: var(--accent-gold);
+  z-index: 1;
+  position: relative;
+}
+.h-period-btn.active {
+  background: var(--accent-gold);
+  border-color: var(--accent-gold);
+  color: #0B0B0F;
+  z-index: 1;
+  position: relative;
+  font-weight: 600;
+}
+.h-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  border: 1px solid var(--accent-gold);
+  background: transparent;
+  color: var(--accent-gold);
+  line-height: 1;
+  white-space: nowrap;
+}
+.h-refresh-btn:hover:not(:disabled) {
+  background: var(--accent-gold);
+  color: #0B0B0F;
+}
+.h-refresh-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.history-loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(11, 11, 15, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  backdrop-filter: blur(2px);
+}
+.history-chart {
+  height: 280px;
+  width: 100%;
+  margin-bottom: 8px;
+}
+.history-dialog .dialog-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 20px 8px;
+}
+.history-dialog .calendar-area {
+  flex: 1;
+  overflow: auto;
+}
+.history-dialog .calendar-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 0 12px;
+}
+.history-dialog .calendar-toolbar h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  min-width: 110px;
+  text-align: center;
+}
+.history-dialog .calendar-table td {
+  height: 54px;
+}
+.history-dialog .calendar-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 52px;
+  padding: 3px 2px;
+}
+.history-dialog .calendar-cell.positive {
+  background: rgba(231, 76, 76, 0.04);
+}
+.history-dialog .calendar-cell.negative {
+  background: rgba(39, 174, 96, 0.04);
+}
+.history-dialog .empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--text-muted);
+  padding: 40px 0;
+}
+.history-dialog .empty-icon {
+  width: 40px;
+  height: 40px;
+  margin-bottom: 8px;
+  opacity: 0.4;
+}
+.history-dialog .empty p {
+  font-size: 13px;
+}
+.history-dialog .empty-hint {
+  font-size: 12px;
+  opacity: 0.7;
+}
+.history-dialog .dialog-footer {
+  padding: 10px 20px;
+  justify-content: center;
+}
+.history-dialog .btn-done {
+  height: 30px;
+  padding: 0 24px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  line-height: 1;
+}
+.history-dialog .btn-done:hover {
+  border-color: var(--accent-gold);
+  color: var(--accent-gold);
+  background: var(--accent-gold-muted);
 }
 
 /* Animations */

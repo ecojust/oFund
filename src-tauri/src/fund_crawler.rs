@@ -1,6 +1,7 @@
 use regex::Regex;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -27,6 +28,8 @@ pub struct FundItemWithCompany {
     pub name: String,
     pub company_id: String,
     pub company_name: String,
+    #[serde(default)]
+    pub category: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -161,10 +164,41 @@ pub async fn fetch_fund_list(company_id: &str) -> Result<Vec<FundItem>, String> 
     Ok(funds)
 }
 
+/// 从东方财富的 fundcode_search.js 获取基金代码到分类的映射
+pub async fn fetch_fund_types() -> Result<HashMap<String, String>, String> {
+    let url = "https://fund.eastmoney.com/js/fundcode_search.js";
+    let resp = http_client()
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("请求基金类型数据失败: {}", e))?
+        .text()
+        .await
+        .map_err(|e| format!("读取响应失败: {}", e))?;
+
+    let json_str = resp
+        .strip_prefix("var r = ")
+        .and_then(|s| s.strip_suffix(";"))
+        .ok_or("无法解析 fundcode_search.js")?;
+
+    let data: Vec<Vec<String>> =
+        serde_json::from_str(json_str).map_err(|e| format!("解析基金类型 JSON 失败: {}", e))?;
+
+    let mut map = HashMap::new();
+    for item in data {
+        if item.len() >= 4 {
+            map.insert(item[0].clone(), item[3].clone());
+        }
+    }
+    Ok(map)
+}
+
 /// 获取所有基金（遍历所有公司，带并发控制）
 pub async fn get_all_funds(
     progress: Option<tokio::sync::mpsc::UnboundedSender<CrawlProgress>>,
 ) -> Result<Vec<FundItemWithCompany>, String> {
+    let fund_types = fetch_fund_types().await?;
+    let fund_types = Arc::new(fund_types);
     let companies = fetch_company_list().await?;
     let total = companies.len();
     let concurrency = std::thread::available_parallelism()
@@ -180,6 +214,7 @@ pub async fn get_all_funds(
         let sem = semaphore.clone();
         let tx = progress.clone();
         let counter = counter.clone();
+        let fund_types = fund_types.clone();
 
         handles.push(tokio::spawn(async move {
             let _permit = sem.acquire().await.unwrap();
@@ -204,6 +239,7 @@ pub async fn get_all_funds(
                 Ok(funds) => funds
                     .into_iter()
                     .map(|f| FundItemWithCompany {
+                        category: fund_types.get(&f.id).cloned().unwrap_or_default(),
                         id: f.id,
                         name: f.name,
                         company_id: company_id.clone(),
