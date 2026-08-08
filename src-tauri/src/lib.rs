@@ -297,7 +297,6 @@ fn save_account(app: tauri::AppHandle, data: Vec<AccountItem>) -> Result<(), Str
 
 #[tauri::command]
 async fn get_fund_history(
-    _app: tauri::AppHandle,
     fund_code: String,
     period: Option<fund_crawler::HistoryPeriod>,
 ) -> Result<fund_crawler::FundHistory, String> {

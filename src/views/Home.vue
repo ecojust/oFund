@@ -786,12 +786,15 @@
             </div>
           </template>
           <div v-else-if="!historyDialogLoading" class="empty">
-            <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <rect x="3" y="3" width="18" height="18" rx="2"/>
-              <path d="M9 3v18M15 3v18M3 9h18M3 15h18"/>
-            </svg>
-            <p>暂无数据</p>
-            <p class="empty-hint">请点击上方按钮获取</p>
+            <p v-if="historyError" class="error-text">{{ historyError }}</p>
+            <template v-else>
+              <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <path d="M9 3v18M15 3v18M3 9h18M3 15h18"/>
+              </svg>
+              <p>暂无数据</p>
+              <p class="empty-hint">请点击上方按钮获取</p>
+            </template>
           </div>
         </div>
         <div class="dialog-footer">
@@ -1671,6 +1674,7 @@ const historyData = ref<HistoryPoint[]>([]);
 const historyDialogLoading = ref(false);
 const historyCalendarDate = ref(new Date());
 const historyChartRef = ref<HTMLElement | null>(null);
+const historyError = ref("");
 
 const historyPeriodOptions = [
   { value: "3m", label: "3个月" },
@@ -1744,6 +1748,7 @@ function selectHistoryPeriod(value: string) {
 
 function closeHistoryDialog() {
   showHistoryDialog.value = false;
+  historyError.value = "";
 }
 
 function renderHistoryChart() {
@@ -1795,6 +1800,7 @@ function renderHistoryChart() {
 
 async function fetchFundHistory() {
   historyDialogLoading.value = true;
+  historyError.value = "";
   try {
     const result = await invoke<FundHistory>("get_fund_history", {
       fundCode: historyFundCode.value,
@@ -1806,6 +1812,7 @@ async function fetchFundHistory() {
     renderHistoryChart();
   } catch (e) {
     console.error(e);
+    historyError.value = typeof e === "string" ? e : "获取历史数据失败";
   } finally {
     historyDialogLoading.value = false;
   }
